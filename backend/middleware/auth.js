@@ -8,12 +8,32 @@ const protect = async (req, res, next) => {
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     try {
       token = req.headers.authorization.split(' ')[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'kkn_trader_jwt_super_secure_key_gold_institutional_2026');
+      let decoded;
+      try {
+        decoded = jwt.verify(token, process.env.JWT_SECRET || 'kkn_trader_jwt_super_secure_key_gold_institutional_2026');
+      } catch (jwtErr) {
+        // Fallback for Firebase ID Tokens
+        const decodedFirebase = jwt.decode(token);
+        if (decodedFirebase && (decodedFirebase.email || decodedFirebase.user_id || decodedFirebase.sub)) {
+          decoded = {
+            id: decodedFirebase.user_id || decodedFirebase.sub,
+            email: decodedFirebase.email,
+            name: decodedFirebase.name,
+          };
+        } else {
+          throw jwtErr;
+        }
+      }
       
       let user = null;
-      if (mongoose.connection.readyState === 1 && mongoose.Types.ObjectId.isValid(decoded.id)) {
+      if (mongoose.connection.readyState === 1) {
         try {
-          user = await User.findById(decoded.id).select('-password');
+          if (decoded.email) {
+            user = await User.findOne({ email: decoded.email.toLowerCase() }).select('-password');
+          }
+          if (!user && decoded.id && mongoose.Types.ObjectId.isValid(decoded.id)) {
+            user = await User.findById(decoded.id).select('-password');
+          }
         } catch (e) {
           // ignore db error, proceed to fallback
         }

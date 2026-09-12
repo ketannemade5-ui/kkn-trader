@@ -77,5 +77,65 @@
     ],
     "status": "ACTIVE",
     "createdAt": "2026-09-12T09:07:16.977Z"
+  },
+  {
+    "_id": "user_1789230806380_47wmo",
+    "id": "user_1789230806380_1m9rn",
+    "name": "unmesh bhangale",
+    "email": "unmeshbhangale41@gmail.com",
+    "passwordHash": "$2a$10$EmQH9Bl0c0vnm0IAqQo7VuqNHtSQrybq.BYIDRcU2XOn03KTOnZVu",
+    "role": "USER",
+    "experienceLevel": "BEGINNER",
+    "tradingGoals": [
+      "Learn Price Action",
+      "Practice $100,000 Paper Account"
+    ],
+    "status": "ACTIVE",
+    "createdAt": "2026-09-12T16:33:26.380Z"
+  },
+  {
+    "_id": "user_1789230806549_i8gmo",
+    "id": "user_1789230806549_aoboj",
+    "name": "unmesh bhangale",
+    "email": "unmeshbhangale41@gmail.com",
+    "passwordHash": "$2a$10$QvpDk6prEUXoKNhN8f895uG92OCB7NwdPU3mZFpu0aMspL4KxQsfi",
+    "role": "USER",
+    "experienceLevel": "BEGINNER",
+    "tradingGoals": [
+      "Learn Price Action",
+      "Practice $100,000 Paper Account"
+    ],
+    "status": "ACTIVE",
+    "createdAt": "2026-09-12T16:33:26.549Z"
+  },
+  {
+    "_id": "user_1789231265646_gg9lv",
+    "id": "user_1789231265646_e0d0u",
+    "name": "manohar nemade",
+    "email": "nemademanohar91@gmail.com",
+    "passwordHash": "$2a$10$6FCW7FJJsYMi7qb37aKI7eS4XDEOsFVqJYEggBZUPBqk/fwp7GbfO",
+    "role": "USER",
+    "experienceLevel": "BEGINNER",
+    "tradingGoals": [
+      "Learn Price Action",
+      "Practice $100,000 Paper Account"
+    ],
+    "status": "ACTIVE",
+    "createdAt": "2026-09-12T16:41:05.646Z"
+  },
+  {
+    "_id": "user_1789231265796_845ih",
+    "id": "user_1789231265796_w4sn9",
+    "name": "manohar nemade",
+    "email": "nemademanohar91@gmail.com",
+    "passwordHash": "$2a$10$rvAEjgBj0ZU0WyJj0lOmMO0WUNZdDKgJkAuMaVOcQbR71Jf4nOAjS",
+    "role": "USER",
+    "experienceLevel": "BEGINNER",
+    "tradingGoals": [
+      "Learn Price Action",
+      "Practice $100,000 Paper Account"
+    ],
+    "status": "ACTIVE",
+    "createdAt": "2026-09-12T16:41:05.796Z"
   }
 ]

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { auth } from '../config/firebase';
 
 // Dynamically resolve API Base URL from environment variable or fallback to /api
 const rawApiUrl = import.meta.env.VITE_API_BASE_URL || '/api';
@@ -11,12 +12,25 @@ const API = axios.create({
   },
 });
 
-// Request interceptor to append JWT token
+// Request interceptor to append Firebase ID token or stored JWT token
 API.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('kkn_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+  async (config) => {
+    try {
+      const user = auth.currentUser;
+      if (user) {
+        const token = await user.getIdToken();
+        config.headers.Authorization = `Bearer ${token}`;
+      } else {
+        const token = localStorage.getItem('kkn_token');
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+      }
+    } catch (err) {
+      const token = localStorage.getItem('kkn_token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
     return config;
   },
