@@ -97,10 +97,14 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-const startServer = async () => {
-  await connectDB();
-  await seedDatabase();
+// Connect Database
+connectDB().catch((err) => {
+  console.log('[Database] Initial connection notice:', err.message);
+});
 
+// In local / standard server mode (Render, local, etc.), start listener
+if (!process.env.VERCEL) {
+  seedDatabase().catch(console.error);
   app.listen(PORT, () => {
     console.log(`\n======================================================`);
     console.log(`⚡ KKN TRADER Institutional Server Online`);
@@ -108,6 +112,7 @@ const startServer = async () => {
     console.log(`🌐 Official Domain: kkntrader.com`);
     console.log(`======================================================\n`);
   });
-};
+}
 
-startServer();
+module.exports = app;
+
