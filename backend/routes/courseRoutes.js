@@ -4,6 +4,7 @@ const { getCourses, getCourseBySlug, getLessonBySlug, markLessonCompleted } = re
 const { protect } = require('../middleware/auth');
 
 router.get('/', getCourses);
+router.get('/level/:slug', getCourseBySlug);
 router.get('/:slug', getCourseBySlug);
 router.get('/:courseSlug/:lessonSlug', getLessonBySlug);
 router.post('/complete-lesson', protect, markLessonCompleted);

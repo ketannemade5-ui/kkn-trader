@@ -49,7 +49,7 @@ export const Footer = () => {
               Trading Academy
             </h4>
             <ul className="space-y-2.5 text-xs">
-              <li><Link to="/learn" className="hover:text-white transition-colors">12 Level Curriculum</Link></li>
+              <li><Link to="/learn" className="hover:text-white transition-colors">20 Level Curriculum</Link></li>
               <li><Link to="/learn/trading-basics" className="hover:text-white transition-colors">Trading Basics</Link></li>
               <li><Link to="/learn/price-action" className="hover:text-white transition-colors">Price Action Mastery</Link></li>
               <li><Link to="/learn/smc-ict-concepts" className="hover:text-white transition-colors">SMC & Liquidity</Link></li>
@@ -64,7 +64,7 @@ export const Footer = () => {
               Platform & Tools
             </h4>
             <ul className="space-y-2.5 text-xs">
-              <li><Link to="/trade" className="hover:text-white transition-colors">Paper Trading ($10k Demo)</Link></li>
+              <li><Link to="/trade" className="hover:text-white transition-colors">Paper Trading ($100,000 Demo)</Link></li>
               <li><Link to="/markets" className="hover:text-white transition-colors">Live Markets & Charts</Link></li>
               <li><Link to="/tools" className="hover:text-white transition-colors">7 Trading Calculators</Link></li>
               <li><Link to="/ai" className="hover:text-white transition-colors">KKN AI Learning Assistant</Link></li>

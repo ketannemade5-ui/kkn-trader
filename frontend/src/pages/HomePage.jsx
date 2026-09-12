@@ -61,7 +61,7 @@ export const HomePage = () => {
     '1% Risk Management',
     'Trading Psychology',
     'Strategy & Backtesting',
-    'Paper Trading ($10k Demo)',
+    'Paper Trading ($100,000 Demo)',
   ];
 
   return (
@@ -103,11 +103,11 @@ export const HomePage = () => {
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
             <Link
-              to="/learn"
+              to="/academy"
               className="w-full sm:w-auto px-8 py-4 rounded-xl text-base font-extrabold text-slate-950 bg-gold-gradient shadow-gold-glow hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2"
             >
               <BookOpen className="w-5 h-5" />
-              Start Learning (12 Levels)
+              Start Learning (20 Levels)
             </Link>
 
             <Link
@@ -115,7 +115,7 @@ export const HomePage = () => {
               className="w-full sm:w-auto px-8 py-4 rounded-xl text-base font-bold text-white bg-slate-900 border border-slate-700 hover:border-kkn-gold/50 hover:bg-slate-800 shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2"
             >
               <Sparkles className="w-5 h-5 text-kkn-gold" />
-              Try Paper Trading ($10k Demo)
+              Try Paper Trading ($100k Demo)
             </Link>
           </div>
 
@@ -127,7 +127,7 @@ export const HomePage = () => {
             </span>
             <span className="flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              Structured 12-Level Curriculum
+              Structured 20-Level Curriculum
             </span>
             <span className="flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
@@ -227,7 +227,7 @@ export const HomePage = () => {
             </div>
             <h3 className="text-lg font-bold text-white font-['Outfit']">1. Learn Step-by-Step</h3>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Progress through 12 structured levels from basic pips and lots up to advanced SMC order blocks, liquidity models, and macroeconomic catalysts.
+              Progress through 20 structured levels from basic pips and lots up to advanced SMC order blocks, quantitative statistics, and professional execution models.
             </p>
           </div>
 
@@ -235,7 +235,7 @@ export const HomePage = () => {
             <div className="w-12 h-12 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
               <Sparkles className="w-6 h-6" />
             </div>
-            <h3 className="text-lg font-bold text-white font-['Outfit']">2. Practice with $10k</h3>
+            <h3 className="text-lg font-bold text-white font-['Outfit']">2. Practice with $100k</h3>
             <p className="text-xs text-slate-400 leading-relaxed">
               Execute realistic simulated BUY and SELL orders with dynamic Stop Loss and Take Profit limits. Zero financial risk. Virtual money only.
             </p>
@@ -275,10 +275,10 @@ export const HomePage = () => {
             </h2>
           </div>
           <Link
-            to="/learn"
+            to="/academy"
             className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-950 bg-gold-gradient shadow-gold-sm hover:brightness-110 flex items-center gap-1.5"
           >
-            <span>Explore Trading Academy (All 12 Levels)</span>
+            <span>Explore Trading Academy (All 20 Levels)</span>
             <ArrowRight className="w-4 h-4" />
           </Link>
         </div>

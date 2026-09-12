@@ -46,20 +46,20 @@ export const Navbar = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20">
           {/* Brand Logo */}
-          <Link to="/" className="flex items-center gap-3 group">
-            <div className="relative flex items-center justify-center">
+          <Link to={isAuthenticated ? "/dashboard" : "/"} className="flex items-center gap-3 group shrink-0">
+            <div className="relative flex items-center justify-center shrink-0">
               <div className="absolute -inset-1 bg-kkn-gold/20 rounded-full blur-sm group-hover:bg-kkn-gold/40 transition-all duration-300"></div>
               <img
                 src="/assets/logo.png"
                 alt="KKN TRADER Official Brand Logo"
-                className="relative h-10 sm:h-12 w-auto object-contain rounded-md shadow-md"
+                className="relative h-10 sm:h-12 w-10 sm:w-12 object-contain rounded-md shadow-md shrink-0"
               />
             </div>
-            <div className="flex flex-col">
+            <div className="flex flex-col shrink-0">
               <span className="text-lg sm:text-xl font-extrabold tracking-wider text-white font-['Outfit'] flex items-center gap-1.5">
                 KKN <span className="text-gold-gradient">TRADER</span>
               </span>
-              <span className="text-[10px] text-kkn-gold/80 tracking-widest font-mono uppercase font-semibold hidden sm:inline-block">
+              <span className="text-[10px] text-kkn-gold/80 tracking-widest font-mono uppercase font-semibold hidden xl:inline-block">
                 Institutional Academy & Simulation
               </span>
             </div>
@@ -259,9 +259,9 @@ export const Navbar = () => {
             {!isAuthenticated ? (
               <>
                 <NavLink to="/" onClick={() => setMobileMenuOpen(false)} className={navLinkClass}>Home</NavLink>
-                <NavLink to="/learn" onClick={() => setMobileMenuOpen(false)} className={navLinkClass}>Academy (12 Levels)</NavLink>
+                <NavLink to="/academy" onClick={() => setMobileMenuOpen(false)} className={navLinkClass}>Academy (20 Levels)</NavLink>
                 <NavLink to="/markets" onClick={() => setMobileMenuOpen(false)} className={navLinkClass}>Live Markets</NavLink>
-                <NavLink to="/trade" onClick={() => setMobileMenuOpen(false)} className={navLinkClass}>Paper Trading ($10k Demo)</NavLink>
+                <NavLink to="/trade" onClick={() => setMobileMenuOpen(false)} className={navLinkClass}>Paper Trading ($100k Demo)</NavLink>
                 <NavLink to="/tools" onClick={() => setMobileMenuOpen(false)} className={navLinkClass}>7 Trading Tools</NavLink>
                 <NavLink to="/ai" onClick={() => setMobileMenuOpen(false)} className={navLinkClass}>KKN AI Assistant</NavLink>
                 <NavLink to="/journal" onClick={() => setMobileMenuOpen(false)} className={navLinkClass}>Trading Journal</NavLink>
@@ -279,7 +279,7 @@ export const Navbar = () => {
                     onClick={() => setMobileMenuOpen(false)}
                     className="w-full text-center py-2.5 rounded-lg text-sm font-bold text-slate-950 bg-gold-gradient shadow-gold-glow"
                   >
-                    Get Started Free ($10k Virtual Account)
+                    Get Started Free ($100k Virtual Account)
                   </Link>
                 </div>
               </>

@@ -11,6 +11,19 @@ import {
 } from 'lightweight-charts';
 import { marketAPI } from '../../services/api';
 import { useMarket } from '../../context/MarketContext';
+import { DrawingToolsLayer, DRAWING_TOOLS } from './DrawingToolsLayer';
+import {
+  calculateSMA,
+  calculateEMA,
+  calculateWMA,
+  calculateRSI,
+  calculateMACD,
+  calculateBollingerBands,
+  calculateVWAP,
+  calculateATR,
+  calculateStochastic,
+  calculateADX,
+} from '../../utils/indicators';
 import {
   Maximize2,
   Minimize2,
@@ -23,56 +36,119 @@ import {
   Eye,
   EyeOff,
   Crosshair as CrosshairIcon,
-  PlusCircle,
   Trash2,
   Zap,
+  PenTool,
+  Share2,
+  ArrowUpRight,
+  ArrowUpCircle,
+  ArrowDownCircle,
+  Ruler,
+  Square,
+  Minus,
+  MoveVertical,
+  Pointer,
 } from 'lucide-react';
 
+const iconMap = {
+  Pointer,
+  TrendingUp,
+  Minus,
+  ArrowUpRight,
+  MoveVertical,
+  PenTool,
+  Square,
+  Sliders,
+  Maximize2,
+  Share2,
+  ArrowUpCircle,
+  ArrowDownCircle,
+  Ruler,
+};
+
+export const getTimeframeSeconds = (timeframe) => {
+  switch (timeframe) {
+    case '1m': return 60;
+    case '5m': return 300;
+    case '15m': return 900;
+    case '30m': return 1800;
+    case '1H': return 3600;
+    case '4H': return 14400;
+    case '1D': return 86400;
+    case '1W': return 604800;
+    default: return 3600;
+  }
+};
+
+export const getTimeframeBucket = (timestampInSecOrMs, timeframe) => {
+  let sec = typeof timestampInSecOrMs === 'number'
+    ? timestampInSecOrMs
+    : Math.floor(Date.now() / 1000);
+
+  if (sec > 1000000000000) {
+    sec = Math.floor(sec / 1000);
+  }
+
+  const tfSec = getTimeframeSeconds(timeframe);
+
+  if (timeframe === '1D') {
+    const d = new Date(sec * 1000);
+    return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 1000);
+  } else if (timeframe === '1W') {
+    const d = new Date(sec * 1000);
+    const day = d.getUTCDay();
+    const diff = d.getUTCDate() - day;
+    return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), diff) / 1000);
+  }
+
+  return Math.floor(sec / tfSec) * tfSec;
+};
+
 export const TradingViewChart = ({
-  symbol = 'XAU/USD',
-  height = 520,
+  symbol = 'EUR/USD',
+  height = 540,
   activePositions = [],
   onQuickTrade,
 }) => {
   const { currentQuote, selectedSymbol } = useMarket();
-  const activeSymbol = symbol || selectedSymbol || 'XAU/USD';
+  const activeSymbol = symbol || selectedSymbol || 'EUR/USD';
 
   const [timeframe, setTimeframe] = useState('1H');
-  const [chartType, setChartType] = useState('candlestick'); // 'candlestick' | 'line' | 'area' | 'bar'
+  const [chartType, setChartType] = useState('candlestick');
   const [candles, setCandles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isLiveFeed, setIsLiveFeed] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-
-  // Indicators toggle state
-  const [showSMA20, setShowSMA20] = useState(true);
-  const [showSMA50, setShowSMA50] = useState(false);
-  const [showEMA20, setShowEMA20] = useState(true);
-  const [showBollinger, setShowBollinger] = useState(false);
-  const [showVolume, setShowVolume] = useState(true);
-  const [showRSI, setShowRSI] = useState(false);
-
-  // Crosshair hover OHLCV state
   const [hoverData, setHoverData] = useState(null);
 
-  // Drawing support/resistance horizontal lines
-  const [horizontalLines, setHorizontalLines] = useState([]);
+  // Active Drawing Tool
+  const [activeDrawingTool, setActiveDrawingTool] = useState('cursor');
 
-  // DOM Refs
+  // Indicators State
+  const [activeIndicators, setActiveIndicators] = useState({
+    sma20: true,
+    ema50: true,
+    rsi: false,
+    macd: false,
+    bollinger: false,
+    vwap: false,
+    atr: false,
+    stochastic: false,
+    volume: true,
+  });
+  const [indicatorMenuOpen, setIndicatorMenuOpen] = useState(false);
+
+  // DOM & Chart Refs
   const containerRef = useRef(null);
   const chartWrapperRef = useRef(null);
   const chartInstanceRef = useRef(null);
   const mainSeriesRef = useRef(null);
   const volumeSeriesRef = useRef(null);
-  const sma20SeriesRef = useRef(null);
-  const sma50SeriesRef = useRef(null);
-  const ema20SeriesRef = useRef(null);
-  const bbUpperSeriesRef = useRef(null);
-  const bbMiddleSeriesRef = useRef(null);
-  const bbLowerSeriesRef = useRef(null);
-  const rsiSeriesRef = useRef(null);
+  const currentLiveCandleRef = useRef(null);
+
+  // Indicator Series Refs
+  const indicatorSeriesRefs = useRef({});
   const positionPriceLinesRef = useRef([]);
-  const horizontalPriceLinesRef = useRef([]);
 
   const timeframes = ['1m', '5m', '15m', '30m', '1H', '4H', '1D', '1W'];
 
@@ -82,9 +158,8 @@ export const TradingViewChart = ({
   const fetchCandles = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await marketAPI.getHistory(activeSymbol, timeframe, 150);
+      const res = await marketAPI.getHistory(activeSymbol, timeframe, 300);
       if (res && res.success && Array.isArray(res.data)) {
-        // Ensure strictly sorted ascending by time and unique
         const sorted = [...res.data].sort((a, b) => a.time - b.time);
         const unique = [];
         const seen = new Set();
@@ -95,6 +170,7 @@ export const TradingViewChart = ({
           }
         }
         setCandles(unique);
+        currentLiveCandleRef.current = unique.length > 0 ? { ...unique[unique.length - 1] } : null;
         setIsLiveFeed(Boolean(res.isLiveFeed));
       }
     } catch (err) {
@@ -109,107 +185,24 @@ export const TradingViewChart = ({
   }, [fetchCandles]);
 
   // ==========================================
-  // 2. TECHNICAL INDICATOR CALCULATIONS
-  // ==========================================
-  const calculateSMA = (data, period) => {
-    const result = [];
-    for (let i = 0; i < data.length; i++) {
-      if (i < period - 1) continue;
-      let sum = 0;
-      for (let j = 0; j < period; j++) sum += data[i - j].close;
-      result.push({ time: data[i].time, value: sum / period });
-    }
-    return result;
-  };
-
-  const calculateEMA = (data, period) => {
-    const result = [];
-    const k = 2 / (period + 1);
-    let prevEma = null;
-    for (let i = 0; i < data.length; i++) {
-      if (i < period - 1) continue;
-      if (prevEma === null) {
-        let sum = 0;
-        for (let j = 0; j < period; j++) sum += data[i - j].close;
-        prevEma = sum / period;
-      } else {
-        prevEma = data[i].close * k + prevEma * (1 - k);
-      }
-      result.push({ time: data[i].time, value: prevEma });
-    }
-    return result;
-  };
-
-  const calculateBollingerBands = (data, period = 20, multiplier = 2) => {
-    const upper = [];
-    const middle = [];
-    const lower = [];
-    for (let i = 0; i < data.length; i++) {
-      if (i < period - 1) continue;
-      let sum = 0;
-      for (let j = 0; j < period; j++) sum += data[i - j].close;
-      const sma = sum / period;
-      let varianceSum = 0;
-      for (let j = 0; j < period; j++) varianceSum += Math.pow(data[i - j].close - sma, 2);
-      const stdDev = Math.sqrt(varianceSum / period);
-      middle.push({ time: data[i].time, value: sma });
-      upper.push({ time: data[i].time, value: sma + multiplier * stdDev });
-      lower.push({ time: data[i].time, value: sma - multiplier * stdDev });
-    }
-    return { upper, middle, lower };
-  };
-
-  const calculateRSI = (data, period = 14) => {
-    const result = [];
-    if (data.length <= period) return result;
-    let gains = 0;
-    let losses = 0;
-    for (let i = 1; i <= period; i++) {
-      const diff = data[i].close - data[i - 1].close;
-      if (diff >= 0) gains += diff;
-      else losses += Math.abs(diff);
-    }
-    let avgGain = gains / period;
-    let avgLoss = losses / period;
-    let rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-    result.push({ time: data[period].time, value: 100 - (100 / (1 + rs)) });
-
-    for (let i = period + 1; i < data.length; i++) {
-      const diff = data[i].close - data[i - 1].close;
-      const gain = diff > 0 ? diff : 0;
-      const loss = diff < 0 ? Math.abs(diff) : 0;
-      avgGain = (avgGain * (period - 1) + gain) / period;
-      avgLoss = (avgLoss * (period - 1) + loss) / period;
-      rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-      result.push({ time: data[i].time, value: 100 - (100 / (1 + rs)) });
-    }
-    return result;
-  };
-
-  // ==========================================
-  // 3. INITIALIZE TRADINGVIEW LIGHTWEIGHT CHART
+  // 2. CHART INITIALIZATION
   // ==========================================
   useEffect(() => {
-    if (!chartWrapperRef.current) return;
+    if (!containerRef.current) return;
 
-    // Clean up previous instance
     if (chartInstanceRef.current) {
       chartInstanceRef.current.remove();
       chartInstanceRef.current = null;
     }
 
-    const currentContainer = chartWrapperRef.current;
-    const clientWidth = currentContainer.clientWidth || 800;
-    const clientHeight = isFullscreen ? window.innerHeight - 120 : height;
-
-    const chart = createChart(currentContainer, {
-      width: clientWidth,
-      height: clientHeight,
+    const chart = createChart(containerRef.current, {
+      width: containerRef.current.clientWidth,
+      height: height,
       layout: {
-        background: { color: '#090d16' }, // Institutional dark navy background
-        textColor: '#94a3b8',
-        fontSize: 12,
-        fontFamily: "'JetBrains Mono', 'Fira Code', 'Inter', monospace",
+        background: { color: '#090D16' },
+        textColor: '#94A3B8',
+        fontSize: 11,
+        fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
       },
       grid: {
         vertLines: { color: 'rgba(30, 41, 59, 0.45)', style: LineStyle.Dotted },
@@ -218,31 +211,37 @@ export const TradingViewChart = ({
       crosshair: {
         mode: CrosshairMode.Normal,
         vertLine: {
-          color: '#d4af37',
+          color: '#F59E0B',
           width: 1,
           style: LineStyle.Dashed,
-          labelBackgroundColor: '#1e293b',
+          visible: true,
+          labelVisible: true,
+          labelBackgroundColor: '#1E293B',
         },
         horzLine: {
-          color: '#d4af37',
+          color: '#F59E0B',
           width: 1,
           style: LineStyle.Dashed,
-          labelBackgroundColor: '#d4af37',
+          visible: true,
+          labelVisible: true,
+          labelBackgroundColor: '#1E293B',
         },
       },
       rightPriceScale: {
-        borderColor: '#1e293b',
-        scaleMargins: {
-          top: 0.1,
-          bottom: showVolume ? 0.22 : 0.1,
-        },
+        borderColor: '#1E293B',
+        scaleMargins: { top: 0.1, bottom: 0.2 },
         autoScale: true,
+        alignLabels: true,
       },
       timeScale: {
-        borderColor: '#1e293b',
+        borderColor: '#1E293B',
         timeVisible: true,
-        secondsVisible: timeframe === '1m',
-        shiftVisibleRangeOnNewBar: true,
+        secondsVisible: false,
+        rightOffset: 12,
+        barSpacing: 10,
+        minBarSpacing: 1,
+        fixLeftEdge: false,
+        fixRightEdge: false,
       },
       handleScroll: {
         mouseWheel: true,
@@ -254,584 +253,497 @@ export const TradingViewChart = ({
         axisPressedMouseMove: true,
         mouseWheel: true,
         pinch: true,
+        axisDoubleClickReset: true,
       },
     });
 
     chartInstanceRef.current = chart;
 
-    // 1. Create Main Price Series based on chartType
+    // Create Main Series based on Chart Type
     let mainSeries;
     if (chartType === 'line') {
       mainSeries = chart.addSeries(LineSeries, {
-        color: '#d4af37',
+        color: '#F59E0B',
         lineWidth: 2,
-        crosshairMarkerVisible: true,
-        crosshairMarkerRadius: 5,
-        priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+        priceLineColor: '#F59E0B',
       });
     } else if (chartType === 'area') {
       mainSeries = chart.addSeries(AreaSeries, {
-        topColor: 'rgba(212, 175, 55, 0.45)',
-        bottomColor: 'rgba(212, 175, 55, 0.02)',
-        lineColor: '#d4af37',
+        topColor: 'rgba(245, 158, 11, 0.4)',
+        bottomColor: 'rgba(245, 158, 11, 0.0)',
+        lineColor: '#F59E0B',
         lineWidth: 2,
-        priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
       });
     } else if (chartType === 'bar') {
       mainSeries = chart.addSeries(BarSeries, {
-        upColor: '#10b981',
-        downColor: '#ef4444',
-        openVisible: true,
-        thinBars: false,
+        upColor: '#10B981',
+        downColor: '#EF4444',
       });
     } else {
-      // Default: Candlestick Series
       mainSeries = chart.addSeries(CandlestickSeries, {
-        upColor: '#10b981',
-        downColor: '#ef4444',
-        borderVisible: false,
-        wickUpColor: '#10b981',
-        wickDownColor: '#ef4444',
+        upColor: '#10B981',
+        downColor: '#EF4444',
+        borderUpColor: '#10B981',
+        borderDownColor: '#EF4444',
+        wickUpColor: '#10B981',
+        wickDownColor: '#EF4444',
       });
     }
     mainSeriesRef.current = mainSeries;
 
-    // 2. Volume Histogram Series (on overlay price scale)
-    if (showVolume) {
-      const volumeSeries = chart.addSeries(HistogramSeries, {
-        priceFormat: { type: 'volume' },
-        priceScaleId: 'volume_scale',
-      });
-      chart.priceScale('volume_scale').applyOptions({
-        scaleMargins: { top: 0.78, bottom: 0 },
-        visible: false,
-      });
-      volumeSeriesRef.current = volumeSeries;
-    }
+    // Volume Series
+    const volumeSeries = chart.addSeries(HistogramSeries, {
+      color: '#3B82F6',
+      priceFormat: { type: 'volume' },
+      priceScaleId: '',
+      scaleMargins: { top: 0.8, bottom: 0 },
+    });
+    volumeSeriesRef.current = volumeSeries;
 
-    // 3. Technical Indicators Series
-    if (showSMA20) {
-      sma20SeriesRef.current = chart.addSeries(LineSeries, {
-        color: '#06b6d4', // Cyan
-        lineWidth: 2,
-        title: 'SMA 20',
-      });
-    }
-    if (showSMA50) {
-      sma50SeriesRef.current = chart.addSeries(LineSeries, {
-        color: '#f59e0b', // Amber
-        lineWidth: 2,
-        title: 'SMA 50',
-      });
-    }
-    if (showEMA20) {
-      ema20SeriesRef.current = chart.addSeries(LineSeries, {
-        color: '#8b5cf6', // Purple
-        lineWidth: 2,
-        title: 'EMA 20',
-      });
-    }
-    if (showBollinger) {
-      bbUpperSeriesRef.current = chart.addSeries(LineSeries, {
-        color: '#38bdf8',
-        lineWidth: 1,
-        lineStyle: LineStyle.Dotted,
-        title: 'BB Upper',
-      });
-      bbMiddleSeriesRef.current = chart.addSeries(LineSeries, {
-        color: '#0284c7',
-        lineWidth: 1.5,
-        title: 'BB Mid',
-      });
-      bbLowerSeriesRef.current = chart.addSeries(LineSeries, {
-        color: '#38bdf8',
-        lineWidth: 1,
-        lineStyle: LineStyle.Dotted,
-        title: 'BB Lower',
-      });
-    }
-    if (showRSI) {
-      rsiSeriesRef.current = chart.addSeries(LineSeries, {
-        color: '#ec4899', // Pink
-        lineWidth: 1.8,
-        priceScaleId: 'rsi_scale',
-        title: 'RSI 14',
-      });
-      chart.priceScale('rsi_scale').applyOptions({
-        scaleMargins: { top: 0.75, bottom: 0.05 },
-        visible: false,
-      });
-    }
-
-    // Crosshair subscription
+    // Subscribe to Crosshair Moves for OHLC display
     chart.subscribeCrosshairMove((param) => {
-      if (param.time && param.seriesData && mainSeriesRef.current) {
-        const candleData = param.seriesData.get(mainSeriesRef.current);
-        if (candleData) {
-          setHoverData(candleData);
-        }
-      } else {
+      if (!param || !param.time || !param.seriesData || param.point === undefined) {
         setHoverData(null);
+        return;
+      }
+      const data = param.seriesData.get(mainSeries);
+      if (data) {
+        setHoverData(data);
       }
     });
 
-    // Resize Observer for auto responsiveness
-    const resizeObserver = new ResizeObserver((entries) => {
-      if (!entries || entries.length === 0 || !chartInstanceRef.current) return;
-      const { width, height: h } = entries[0].contentRect;
-      chartInstanceRef.current.applyOptions({
-        width: Math.floor(width),
-        height: isFullscreen ? window.innerHeight - 120 : height,
-      });
-    });
-
-    resizeObserver.observe(currentContainer);
+    // Resize observer
+    const handleResize = () => {
+      if (containerRef.current && chartInstanceRef.current) {
+        chartInstanceRef.current.applyOptions({
+          width: containerRef.current.clientWidth,
+        });
+      }
+    };
+    window.addEventListener('resize', handleResize);
 
     return () => {
-      resizeObserver.disconnect();
+      window.removeEventListener('resize', handleResize);
       if (chartInstanceRef.current) {
         chartInstanceRef.current.remove();
         chartInstanceRef.current = null;
       }
     };
-  }, [chartType, showSMA20, showSMA50, showEMA20, showBollinger, showVolume, showRSI, isFullscreen, height]);
+  }, [chartType, height]);
 
   // ==========================================
-  // 4. POPULATE DATA ON CHART & INDICATORS
+  // 3. UPDATE CANDLES & INDICATORS
   // ==========================================
   useEffect(() => {
-    if (!chartInstanceRef.current || !mainSeriesRef.current || candles.length === 0) return;
+    if (!mainSeriesRef.current || candles.length === 0) return;
 
-    try {
-      if (chartType === 'line' || chartType === 'area') {
-        const lineData = candles.map((c) => ({ time: c.time, value: c.close }));
-        mainSeriesRef.current.setData(lineData);
-      } else {
-        mainSeriesRef.current.setData(candles);
-      }
+    if (chartType === 'line' || chartType === 'area') {
+      const lineData = candles.map((c) => ({ time: c.time, value: c.close }));
+      mainSeriesRef.current.setData(lineData);
+    } else {
+      mainSeriesRef.current.setData(candles);
+    }
 
-      // Volume
-      if (volumeSeriesRef.current && showVolume) {
-        const volumeData = candles.map((c) => ({
+    // Volume
+    if (volumeSeriesRef.current) {
+      if (activeIndicators.volume) {
+        const volData = candles.map((c) => ({
           time: c.time,
           value: c.volume || 1000,
-          color: c.close >= c.open ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)',
+          color: c.close >= c.open ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)',
         }));
-        volumeSeriesRef.current.setData(volumeData);
+        volumeSeriesRef.current.setData(volData);
+      } else {
+        volumeSeriesRef.current.setData([]);
       }
-
-      // SMA 20
-      if (sma20SeriesRef.current && showSMA20) {
-        sma20SeriesRef.current.setData(calculateSMA(candles, 20));
-      }
-      // SMA 50
-      if (sma50SeriesRef.current && showSMA50) {
-        sma50SeriesRef.current.setData(calculateSMA(candles, 50));
-      }
-      // EMA 20
-      if (ema20SeriesRef.current && showEMA20) {
-        ema20SeriesRef.current.setData(calculateEMA(candles, 20));
-      }
-      // Bollinger Bands
-      if (showBollinger && bbUpperSeriesRef.current && bbMiddleSeriesRef.current && bbLowerSeriesRef.current) {
-        const bb = calculateBollingerBands(candles, 20, 2);
-        bbUpperSeriesRef.current.setData(bb.upper);
-        bbMiddleSeriesRef.current.setData(bb.middle);
-        bbLowerSeriesRef.current.setData(bb.lower);
-      }
-      // RSI 14
-      if (rsiSeriesRef.current && showRSI) {
-        rsiSeriesRef.current.setData(calculateRSI(candles, 14));
-      }
-
-      chartInstanceRef.current.timeScale().fitContent();
-    } catch (err) {
-      console.warn('Error setting chart data:', err.message);
     }
-  }, [candles, chartType, showSMA20, showSMA50, showEMA20, showBollinger, showVolume, showRSI]);
+
+    const chart = chartInstanceRef.current;
+    if (!chart) return;
+
+    // Remove existing indicator series before re-adding
+    Object.values(indicatorSeriesRefs.current).forEach((series) => {
+      try {
+        if (series) chart.removeSeries(series);
+      } catch (e) {
+        // ignore
+      }
+    });
+    indicatorSeriesRefs.current = {};
+
+    // SMA 20
+    if (activeIndicators.sma20) {
+      const smaData = calculateSMA(candles, 20);
+      if (smaData.length > 0) {
+        const s = chart.addSeries(LineSeries, {
+          color: '#38BDF8',
+          lineWidth: 2,
+          title: 'SMA 20',
+          priceLineVisible: false,
+        });
+        s.setData(smaData);
+        indicatorSeriesRefs.current.sma20 = s;
+      }
+    }
+
+    // EMA 50
+    if (activeIndicators.ema50) {
+      const emaData = calculateEMA(candles, 50);
+      if (emaData.length > 0) {
+        const s = chart.addSeries(LineSeries, {
+          color: '#F59E0B',
+          lineWidth: 2,
+          title: 'EMA 50',
+          priceLineVisible: false,
+        });
+        s.setData(emaData);
+        indicatorSeriesRefs.current.ema50 = s;
+      }
+    }
+
+    // Bollinger Bands
+    if (activeIndicators.bollinger) {
+      const bb = calculateBollingerBands(candles, 20, 2);
+      if (bb.upper.length > 0) {
+        const u = chart.addSeries(LineSeries, { color: 'rgba(168, 85, 247, 0.7)', lineWidth: 1, title: 'BB Upper' });
+        const m = chart.addSeries(LineSeries, { color: 'rgba(168, 85, 247, 0.4)', lineWidth: 1, lineStyle: LineStyle.Dotted });
+        const l = chart.addSeries(LineSeries, { color: 'rgba(168, 85, 247, 0.7)', lineWidth: 1, title: 'BB Lower' });
+        u.setData(bb.upper);
+        m.setData(bb.middle);
+        l.setData(bb.lower);
+        indicatorSeriesRefs.current.bbUpper = u;
+        indicatorSeriesRefs.current.bbMiddle = m;
+        indicatorSeriesRefs.current.bbLower = l;
+      }
+    }
+
+    // VWAP
+    if (activeIndicators.vwap) {
+      const vwapData = calculateVWAP(candles);
+      if (vwapData.length > 0) {
+        const s = chart.addSeries(LineSeries, {
+          color: '#EC4899',
+          lineWidth: 2,
+          title: 'VWAP',
+          priceLineVisible: false,
+        });
+        s.setData(vwapData);
+        indicatorSeriesRefs.current.vwap = s;
+      }
+    }
+    // Initialize current live candle reference
+    if (candles.length > 0) {
+      currentLiveCandleRef.current = { ...candles[candles.length - 1] };
+    }
+
+    // Auto-fit content on historical candles reload
+    if (chartInstanceRef.current) {
+      chartInstanceRef.current.timeScale().fitContent();
+    }
+  }, [candles, chartType, activeIndicators]);
 
   // ==========================================
-  // 5. LIVE TICK PRICE STREAMING UPDATE
+  // 4. LIVE PRICE TICK UPDATE & CANDLE AGGREGATION
   // ==========================================
   useEffect(() => {
-    if (
-      !mainSeriesRef.current ||
-      candles.length === 0 ||
-      !currentQuote ||
-      currentQuote.symbol !== activeSymbol ||
-      !currentQuote.price
-    ) {
-      return;
+    if (!mainSeriesRef.current || !currentQuote) return;
+    if (currentQuote.symbol !== activeSymbol) return;
+
+    const livePrice = currentQuote.price;
+    if (typeof livePrice !== 'number' || isNaN(livePrice) || livePrice <= 0) return;
+
+    // Normalize incoming tick timestamp to integer seconds
+    let rawTime = Date.now();
+    if (currentQuote.lastUpdated) {
+      const parsed = new Date(currentQuote.lastUpdated).getTime();
+      if (!isNaN(parsed) && parsed > 0) rawTime = parsed;
     }
+    const tickTimeSec = Math.floor(rawTime / 1000);
+    const bucketTime = getTimeframeBucket(tickTimeSec, timeframe);
 
-    try {
-      const price = currentQuote.price;
-      const lastCandle = candles[candles.length - 1];
+    const activeLiveCandle = currentLiveCandleRef.current;
 
-      const updatedCandle = {
-        ...lastCandle,
-        close: price,
-        high: Math.max(lastCandle.high, price),
-        low: Math.min(lastCandle.low, price),
+    if (!activeLiveCandle || bucketTime > activeLiveCandle.time) {
+      // A NEW timeframe candle period has begun!
+      const prevClose = activeLiveCandle ? activeLiveCandle.close : livePrice;
+      const newCandle = {
+        time: bucketTime,
+        open: prevClose,
+        high: Math.max(prevClose, livePrice),
+        low: Math.min(prevClose, livePrice),
+        close: livePrice,
+        volume: 100,
       };
 
+      currentLiveCandleRef.current = newCandle;
+
       if (chartType === 'line' || chartType === 'area') {
-        mainSeriesRef.current.update({ time: lastCandle.time, value: price });
+        mainSeriesRef.current.update({ time: newCandle.time, value: livePrice });
+      } else {
+        mainSeriesRef.current.update(newCandle);
+      }
+
+      if (volumeSeriesRef.current && activeIndicators.volume) {
+        volumeSeriesRef.current.update({
+          time: newCandle.time,
+          value: newCandle.volume,
+          color: newCandle.close >= newCandle.open ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)',
+        });
+      }
+    } else {
+      // SAME timeframe bucket: update current active candle
+      const updatedCandle = {
+        ...activeLiveCandle,
+        high: Math.max(activeLiveCandle.high, livePrice),
+        low: Math.min(activeLiveCandle.low, livePrice),
+        close: livePrice,
+        volume: (activeLiveCandle.volume || 1000) + 10,
+      };
+
+      currentLiveCandleRef.current = updatedCandle;
+
+      if (chartType === 'line' || chartType === 'area') {
+        mainSeriesRef.current.update({ time: updatedCandle.time, value: livePrice });
       } else {
         mainSeriesRef.current.update(updatedCandle);
       }
-    } catch (e) {
-      // transient tick update error
+
+      if (volumeSeriesRef.current && activeIndicators.volume) {
+        volumeSeriesRef.current.update({
+          time: updatedCandle.time,
+          value: updatedCandle.volume,
+          color: updatedCandle.close >= updatedCandle.open ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)',
+        });
+      }
     }
-  }, [currentQuote?.price, activeSymbol, chartType]);
+  }, [currentQuote, activeSymbol, chartType, timeframe, activeIndicators.volume]);
 
-  // ==========================================
-  // 6. ON-CHART ACTIVE POSITION & SL/TP PRICE LINES
-  // ==========================================
-  useEffect(() => {
-    if (!mainSeriesRef.current) return;
-
-    // Clear previous position price lines
-    positionPriceLinesRef.current.forEach((line) => {
-      try {
-        mainSeriesRef.current.removePriceLine(line);
-      } catch (e) {}
-    });
-    positionPriceLinesRef.current = [];
-
-    // Filter positions for current symbol
-    const symPositions = (activePositions || []).filter(
-      (p) => p.symbol === activeSymbol && p.status === 'OPEN'
-    );
-
-    symPositions.forEach((pos) => {
-      // 1. Entry Line
-      if (pos.entryPrice) {
-        const entryLine = mainSeriesRef.current.createPriceLine({
-          price: pos.entryPrice,
-          color: pos.side === 'BUY' ? '#38bdf8' : '#f97316',
-          lineWidth: 2,
-          lineStyle: LineStyle.Solid,
-          axisLabelVisible: true,
-          title: `${pos.side} ${pos.lots}L @ ${pos.entryPrice}`,
-        });
-        positionPriceLinesRef.current.push(entryLine);
-      }
-
-      // 2. Stop Loss Line
-      if (pos.stopLoss) {
-        const slLine = mainSeriesRef.current.createPriceLine({
-          price: pos.stopLoss,
-          color: '#ef4444', // Red
-          lineWidth: 2,
-          lineStyle: LineStyle.Dashed,
-          axisLabelVisible: true,
-          title: `SL: ${pos.stopLoss}`,
-        });
-        positionPriceLinesRef.current.push(slLine);
-      }
-
-      // 3. Take Profit Line
-      if (pos.takeProfit) {
-        const tpLine = mainSeriesRef.current.createPriceLine({
-          price: pos.takeProfit,
-          color: '#10b981', // Green
-          lineWidth: 2,
-          lineStyle: LineStyle.Dashed,
-          axisLabelVisible: true,
-          title: `TP: ${pos.takeProfit}`,
-        });
-        positionPriceLinesRef.current.push(tpLine);
-      }
-    });
-  }, [activePositions, activeSymbol]);
-
-  // ==========================================
-  // 7. HORIZONTAL SUPPORT/RESISTANCE DRAWINGS
-  // ==========================================
-  useEffect(() => {
-    if (!mainSeriesRef.current) return;
-
-    // Clear previous drawing price lines
-    horizontalPriceLinesRef.current.forEach((line) => {
-      try {
-        mainSeriesRef.current.removePriceLine(line);
-      } catch (e) {}
-    });
-    horizontalPriceLinesRef.current = [];
-
-    horizontalLines.forEach((lvl) => {
-      const line = mainSeriesRef.current.createPriceLine({
-        price: lvl.price,
-        color: lvl.color || '#d4af37',
-        lineWidth: 1.5,
-        lineStyle: LineStyle.LargeDashed,
-        axisLabelVisible: true,
-        title: lvl.title || `Level ${lvl.price}`,
-      });
-      horizontalPriceLinesRef.current.push(line);
-    });
-  }, [horizontalLines]);
-
-  const addCurrentPriceLevel = () => {
-    const p = currentQuote?.price || (candles.length > 0 ? candles[candles.length - 1].close : 0);
-    if (!p) return;
-    setHorizontalLines((prev) => [
-      ...prev,
-      {
-        id: `lvl_${Date.now()}`,
-        price: p,
-        color: '#d4af37',
-        title: `KEY LEVEL: ${p}`,
-      },
-    ]);
-  };
-
-  const clearLevels = () => {
-    setHorizontalLines([]);
-  };
-
-  const resetChartView = () => {
+  // Fit content
+  const handleReset = () => {
     if (chartInstanceRef.current) {
       chartInstanceRef.current.timeScale().fitContent();
     }
   };
 
-  const latestCandle = candles.length > 0 ? candles[candles.length - 1] : null;
-  const displayData = hoverData || latestCandle;
+  const handleScrollToLatest = () => {
+    if (chartInstanceRef.current) {
+      chartInstanceRef.current.timeScale().scrollToRealTime();
+    }
+  };
+
+  const toggleFullscreen = () => {
+    if (!chartWrapperRef.current) return;
+    if (!isFullscreen) {
+      if (chartWrapperRef.current.requestFullscreen) {
+        chartWrapperRef.current.requestFullscreen();
+      }
+      setIsFullscreen(true);
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+      setIsFullscreen(false);
+    }
+  };
+
+  const toggleIndicator = (key) => {
+    setActiveIndicators((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const activeQuote = currentQuote?.symbol === activeSymbol ? currentQuote : null;
+  const currentPrice = activeQuote ? activeQuote.price : candles[candles.length - 1]?.close;
 
   return (
     <div
-      ref={containerRef}
-      className={`flex flex-col bg-slate-900/95 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl backdrop-blur-xl transition-all duration-300 ${
-        isFullscreen ? 'fixed inset-0 z-50 rounded-none bg-slate-950 p-4' : 'w-full'
+      ref={chartWrapperRef}
+      className={`glass-panel rounded-2xl border border-slate-800 bg-[#090D16] flex flex-col overflow-hidden relative ${
+        isFullscreen ? 'fixed inset-0 z-50 rounded-none' : ''
       }`}
     >
-      {/* Top Chart Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-slate-800 bg-slate-950/70">
-        {/* Symbol and Feed Status */}
+      {/* Top Header & Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-2 p-3 border-b border-slate-800/80 bg-slate-950/80 text-xs font-mono">
+        {/* Symbol & Price Badge */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-base sm:text-lg font-black text-white font-mono tracking-wide">
-              {activeSymbol}
+          <span className="font-extrabold text-sm text-white font-['Outfit'] tracking-wide">{activeSymbol}</span>
+          <span className="text-kkn-gold font-bold text-sm bg-kkn-gold/10 px-2.5 py-0.5 rounded border border-kkn-gold/30">
+            {currentPrice ? currentPrice.toFixed(4) : '—'}
+          </span>
+          {activeQuote && (
+            <span
+              className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                activeQuote.change24 >= 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'
+              }`}
+            >
+              {activeQuote.change24 >= 0 ? `+${activeQuote.change24}%` : `${activeQuote.change24}%`}
             </span>
-            {isLiveFeed ? (
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                LIVE FEED
-              </span>
-            ) : (
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                SIMULATION
-              </span>
-            )}
-          </div>
+          )}
+          {isLiveFeed && (
+            <span className="flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+              LIVE
+            </span>
+          )}
+        </div>
 
-          {/* Timeframe Selector */}
-          <div className="flex items-center bg-slate-900/90 rounded-lg p-0.5 border border-slate-800 overflow-x-auto">
-            {timeframes.map((tf) => (
+        {/* Timeframe Selector */}
+        <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+          {timeframes.map((tf) => (
+            <button
+              key={tf}
+              onClick={() => setTimeframe(tf)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                timeframe === tf ? 'bg-kkn-gold text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {tf}
+            </button>
+          ))}
+        </div>
+
+        {/* Chart Types & Indicator Controls */}
+        <div className="flex items-center gap-2">
+          {/* Chart Type */}
+          <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+            {['candlestick', 'line', 'area', 'bar'].map((type) => (
               <button
-                key={tf}
-                onClick={() => setTimeframe(tf)}
-                className={`px-2.5 py-1 text-xs font-semibold rounded font-mono transition-all ${
-                  timeframe === tf
-                    ? 'bg-kkn-gold text-slate-950 font-bold shadow-sm'
-                    : 'text-slate-400 hover:text-white'
+                key={type}
+                onClick={() => setChartType(type)}
+                className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${
+                  chartType === type ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                {tf}
+                {type}
               </button>
             ))}
           </div>
 
-          {/* Chart Type Selector */}
-          <div className="hidden sm:flex items-center bg-slate-900/90 rounded-lg p-0.5 border border-slate-800">
+          {/* Indicators Dropdown */}
+          <div className="relative">
             <button
-              onClick={() => setChartType('candlestick')}
-              title="Candlesticks"
-              className={`px-2 py-1 text-xs font-semibold rounded transition-all ${
-                chartType === 'candlestick' ? 'bg-slate-700 text-white font-bold' : 'text-slate-400 hover:text-white'
-              }`}
+              onClick={() => setIndicatorMenuOpen(!indicatorMenuOpen)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-bold transition-all"
             >
-              Candles
+              <Activity className="w-3.5 h-3.5 text-kkn-gold" />
+              <span>Indicators</span>
             </button>
-            <button
-              onClick={() => setChartType('line')}
-              title="Line Chart"
-              className={`px-2 py-1 text-xs font-semibold rounded transition-all ${
-                chartType === 'line' ? 'bg-slate-700 text-white font-bold' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Line
-            </button>
-            <button
-              onClick={() => setChartType('area')}
-              title="Area Chart"
-              className={`px-2 py-1 text-xs font-semibold rounded transition-all ${
-                chartType === 'area' ? 'bg-slate-700 text-white font-bold' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Area
-            </button>
-            <button
-              onClick={() => setChartType('bar')}
-              title="OHLC Bar Chart"
-              className={`px-2 py-1 text-xs font-semibold rounded transition-all ${
-                chartType === 'bar' ? 'bg-slate-700 text-white font-bold' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Bars
-            </button>
+
+            {indicatorMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 w-52 bg-slate-950 border border-slate-800 rounded-2xl p-3 shadow-2xl z-40 space-y-2">
+                <div className="text-[10px] uppercase font-bold text-slate-500 pb-1 border-b border-slate-800">
+                  Toggle Technical Indicators
+                </div>
+                {[
+                  { key: 'sma20', name: 'SMA 20 (Simple MA)' },
+                  { key: 'ema50', name: 'EMA 50 (Exponential)' },
+                  { key: 'bollinger', name: 'Bollinger Bands' },
+                  { key: 'vwap', name: 'VWAP (Volume Weighted)' },
+                  { key: 'volume', name: 'Volume Histogram' },
+                ].map((ind) => (
+                  <button
+                    key={ind.key}
+                    onClick={() => toggleIndicator(ind.key)}
+                    className="w-full flex items-center justify-between text-xs py-1.5 px-2 rounded-lg hover:bg-slate-900 text-slate-300 text-left transition-colors"
+                  >
+                    <span>{ind.name}</span>
+                    {activeIndicators[ind.key] ? (
+                      <Eye className="w-3.5 h-3.5 text-kkn-gold" />
+                    ) : (
+                      <EyeOff className="w-3.5 h-3.5 text-slate-600" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+
+          {/* Latest / Scroll to Real-time */}
+          <button
+            onClick={handleScrollToLatest}
+            title="Go to Latest Candle"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-kkn-gold hover:text-white border border-slate-800 text-xs font-bold transition-all"
+          >
+            <span>Latest →</span>
+          </button>
+
+          {/* Reset / Auto-Fit View */}
+          <button
+            onClick={handleReset}
+            title="Auto-Fit Historical Candles"
+            className="p-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-all"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+
+          {/* Fullscreen */}
+          <button
+            onClick={toggleFullscreen}
+            title="Toggle Fullscreen"
+            className="p-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-all"
+          >
+            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Main Area with Left Drawing Toolbar + Center Chart */}
+      <div className="flex-1 flex relative">
+        {/* Left Drawing Toolbar */}
+        <div className="w-12 border-r border-slate-800/80 bg-slate-950/90 flex flex-col items-center py-2 gap-1.5 z-30 shrink-0">
+          {DRAWING_TOOLS.map((tool) => {
+            const IconComp = iconMap[tool.icon] || Pointer;
+            const isSelected = activeDrawingTool === tool.id;
+            return (
+              <button
+                key={tool.id}
+                onClick={() => setActiveDrawingTool(tool.id)}
+                title={tool.name}
+                className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
+                  isSelected
+                    ? 'bg-kkn-gold text-slate-950 shadow-gold-sm scale-105'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <IconComp className="w-4 h-4" />
+              </button>
+            );
+          })}
         </div>
 
-        {/* Technical Indicators & Tools */}
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-          <button
-            onClick={() => setShowSMA20(!showSMA20)}
-            className={`px-2 py-1 text-xs font-bold rounded-lg border transition-all ${
-              showSMA20
-                ? 'bg-cyan-950/80 border-cyan-500/40 text-cyan-300'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-            }`}
-          >
-            SMA 20
-          </button>
-
-          <button
-            onClick={() => setShowEMA20(!showEMA20)}
-            className={`px-2 py-1 text-xs font-bold rounded-lg border transition-all ${
-              showEMA20
-                ? 'bg-purple-950/80 border-purple-500/40 text-purple-300'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-            }`}
-          >
-            EMA 20
-          </button>
-
-          <button
-            onClick={() => setShowBollinger(!showBollinger)}
-            className={`px-2 py-1 text-xs font-bold rounded-lg border transition-all ${
-              showBollinger
-                ? 'bg-sky-950/80 border-sky-500/40 text-sky-300'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-            }`}
-          >
-            BB (20,2)
-          </button>
-
-          <button
-            onClick={() => setShowVolume(!showVolume)}
-            className={`px-2 py-1 text-xs font-bold rounded-lg border transition-all ${
-              showVolume
-                ? 'bg-emerald-950/80 border-emerald-500/40 text-emerald-300'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-            }`}
-          >
-            Vol
-          </button>
-
-          <button
-            onClick={() => setShowRSI(!showRSI)}
-            className={`px-2 py-1 text-xs font-bold rounded-lg border transition-all ${
-              showRSI
-                ? 'bg-pink-950/80 border-pink-500/40 text-pink-300'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-            }`}
-          >
-            RSI
-          </button>
-
-          {/* Add S/R Level */}
-          <button
-            onClick={addCurrentPriceLevel}
-            className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-kkn-gold hover:border-kkn-gold/40 transition-all flex items-center gap-1 text-xs font-semibold"
-            title="Mark Horizontal Support/Resistance Level"
-          >
-            <PlusCircle className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Level</span>
-          </button>
-
-          {horizontalLines.length > 0 && (
-            <button
-              onClick={clearLevels}
-              className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-rose-400 hover:bg-rose-950/50 transition-all"
-              title="Clear Drawing Levels"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+        {/* Chart Canvas & SVG Overlay */}
+        <div className="flex-1 relative overflow-hidden" style={{ minHeight: `${height}px` }}>
+          {/* OHLCV Crosshair Hover Bar */}
+          {hoverData && (
+            <div className="absolute top-2 left-3 z-10 flex items-center gap-3 text-[11px] font-mono bg-slate-950/90 px-3 py-1 rounded-lg border border-slate-800 pointer-events-none backdrop-blur-md shadow-lg">
+              <span className="text-slate-400">
+                O: <strong className="text-white">{hoverData.open !== undefined ? hoverData.open.toFixed(4) : (hoverData.value !== undefined ? hoverData.value.toFixed(4) : '—')}</strong>
+              </span>
+              <span className="text-slate-400">
+                H: <strong className="text-emerald-400">{hoverData.high !== undefined ? hoverData.high.toFixed(4) : '—'}</strong>
+              </span>
+              <span className="text-slate-400">
+                L: <strong className="text-rose-400">{hoverData.low !== undefined ? hoverData.low.toFixed(4) : '—'}</strong>
+              </span>
+              <span className="text-slate-400">
+                C: <strong className="text-kkn-gold">{hoverData.close !== undefined ? hoverData.close.toFixed(4) : (hoverData.value !== undefined ? hoverData.value.toFixed(4) : '—')}</strong>
+              </span>
+            </div>
           )}
 
-          {/* Reset View */}
-          <button
-            onClick={resetChartView}
-            className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition-all"
-            title="Fit & Reset Chart View"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
+          {/* Lightweight Charts DOM Container */}
+          <div ref={containerRef} className="w-full h-full min-h-[480px]" style={{ pointerEvents: 'auto' }} />
 
-          {/* Fullscreen Toggle */}
-          <button
-            onClick={() => setIsFullscreen(!isFullscreen)}
-            className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition-all"
-            title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-          >
-            {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-          </button>
+          {/* SVG Interactive Drawing Layer */}
+          <DrawingToolsLayer
+            chartInstance={chartInstanceRef.current}
+            seriesInstance={mainSeriesRef.current}
+            symbol={activeSymbol}
+            timeframe={timeframe}
+            activeTool={activeDrawingTool}
+            onToolSelect={setActiveDrawingTool}
+            width={containerRef.current?.clientWidth}
+            height={height}
+          />
         </div>
-      </div>
-
-      {/* OHLCV Crosshair & Live Metric Ribbon */}
-      <div className="px-4 py-2 border-b border-slate-800/60 bg-slate-950/40 flex flex-wrap items-center justify-between text-xs font-mono text-slate-400 gap-2">
-        {displayData ? (
-          <div className="flex items-center gap-4 flex-wrap">
-            <span>
-              O: <strong className="text-white">{displayData.open ?? displayData.value}</strong>
-            </span>
-            {displayData.high !== undefined && (
-              <span>
-                H: <strong className="text-emerald-400">{displayData.high}</strong>
-              </span>
-            )}
-            {displayData.low !== undefined && (
-              <span>
-                L: <strong className="text-rose-400">{displayData.low}</strong>
-              </span>
-            )}
-            <span>
-              C: <strong className="text-white">{displayData.close ?? displayData.value}</strong>
-            </span>
-            {displayData.volume !== undefined && (
-              <span>
-                Vol: <strong className="text-sky-300">{displayData.volume?.toLocaleString()}</strong>
-              </span>
-            )}
-          </div>
-        ) : (
-          <span className="text-slate-500">Hover crosshair over chart to inspect candle OHLCV data</span>
-        )}
-
-        <div className="flex items-center gap-3 text-[11px]">
-          <span className="text-kkn-gold/90 font-mono">TradingView™ Lightweight Engine</span>
-          <span className="text-slate-500">|</span>
-          <span className="text-slate-400">Pan / Zoom Enabled</span>
-        </div>
-      </div>
-
-      {/* TradingView Chart Container Area */}
-      <div className="relative w-full overflow-hidden" style={{ height: isFullscreen ? 'calc(100vh - 140px)' : `${height}px` }}>
-        {loading && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm">
-            <div className="flex flex-col items-center gap-2">
-              <div className="w-8 h-8 border-3 border-kkn-gold/30 border-t-kkn-gold rounded-full animate-spin"></div>
-              <span className="text-xs font-mono text-slate-300">Synchronizing Market Candles...</span>
-            </div>
-          </div>
-        )}
-
-        <div ref={chartWrapperRef} className="w-full h-full cursor-crosshair" />
       </div>
     </div>
   );

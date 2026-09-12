@@ -3,11 +3,11 @@ const Lesson = require('../models/Lesson');
 const Quiz = require('../models/Quiz');
 const UserProgress = require('../models/UserProgress');
 const mongoose = require('mongoose');
-const { COURSES_DATA, SEED_LESSONS } = require('../services/seedService');
+const { COURSES_DATA, SEED_LESSONS, SEED_QUIZZES } = require('../services/seedService');
 
 const isDbConnected = () => mongoose.connection.readyState === 1;
 
-// @desc   Get all 12 Academy Courses
+// @desc   Get all Academy Courses (All 20 Levels)
 // @route  GET /api/courses
 // @access Public
 const getCourses = async (req, res, next) => {
@@ -29,7 +29,7 @@ const getCourses = async (req, res, next) => {
   }
 };
 
-// @desc   Get single course by slug with lessons
+// @desc   Get single course by slug or numeric level with lessons
 // @route  GET /api/courses/:slug
 // @access Public
 const getCourseBySlug = async (req, res, next) => {
@@ -38,24 +38,43 @@ const getCourseBySlug = async (req, res, next) => {
     let course = null;
     let lessons = [];
 
+    const isNumericLevel = !isNaN(Number(slug));
+    const targetLevel = isNumericLevel ? Number(slug) : null;
+
     if (isDbConnected()) {
       try {
-        course = await Course.findOne({ slug });
-        lessons = await Lesson.find({ courseSlug: slug, isPublished: true }).sort({ order: 1 });
+        if (targetLevel) {
+          course = await Course.findOne({ level: targetLevel });
+        } else {
+          course = await Course.findOne({ slug });
+        }
+        if (course) {
+          lessons = await Lesson.find({
+            $or: [{ courseSlug: course.slug }, { level: course.level }],
+            isPublished: true,
+          }).sort({ order: 1 });
+        }
       } catch (e) {
         // fallback
       }
     }
 
     if (!course) {
-      course = COURSES_DATA.find(c => c.slug === slug);
+      if (targetLevel) {
+        course = COURSES_DATA.find((c) => c.level === targetLevel);
+      } else {
+        course = COURSES_DATA.find((c) => c.slug === slug || String(c.level) === slug);
+      }
     }
+
     if (!course) {
-      return res.status(404).json({ success: false, message: 'Course not found' });
+      return res.status(404).json({ success: false, message: 'Course level not found' });
     }
 
     if (!lessons || lessons.length === 0) {
-      lessons = SEED_LESSONS.filter(l => l.courseSlug === slug);
+      lessons = SEED_LESSONS.filter(
+        (l) => l.courseSlug === course.slug || l.level === course.level
+      );
     }
 
     res.status(200).json({
@@ -66,13 +85,17 @@ const getCourseBySlug = async (req, res, next) => {
       },
     });
   } catch (err) {
-    const fallbackCourse = COURSES_DATA.find(c => c.slug === req.params.slug);
+    const fallbackCourse = COURSES_DATA.find(
+      (c) => c.slug === req.params.slug || String(c.level) === req.params.slug
+    );
     if (fallbackCourse) {
       return res.status(200).json({
         success: true,
         data: {
           course: fallbackCourse,
-          lessons: SEED_LESSONS.filter(l => l.courseSlug === req.params.slug),
+          lessons: SEED_LESSONS.filter(
+            (l) => l.courseSlug === fallbackCourse.slug || l.level === fallbackCourse.level
+          ),
         },
       });
     }
@@ -81,7 +104,7 @@ const getCourseBySlug = async (req, res, next) => {
 };
 
 // @desc   Get single lesson details with quiz link
-// @route  GET /api/lessons/:courseSlug/:lessonSlug
+// @route  GET /api/courses/:courseSlug/:lessonSlug
 // @access Public
 const getLessonBySlug = async (req, res, next) => {
   try {
@@ -89,34 +112,55 @@ const getLessonBySlug = async (req, res, next) => {
     let lesson = null;
     let quiz = null;
 
+    const isNumericLevel = !isNaN(Number(courseSlug));
+    const targetLevel = isNumericLevel ? Number(courseSlug) : null;
+
     if (isDbConnected()) {
       try {
-        lesson = await Lesson.findOne({ courseSlug, slug: lessonSlug });
-        quiz = await Quiz.findOne({ courseSlug });
+        if (targetLevel) {
+          lesson = await Lesson.findOne({ level: targetLevel, slug: lessonSlug });
+          quiz = await Quiz.findOne({ level: targetLevel });
+        } else {
+          lesson = await Lesson.findOne({ courseSlug, slug: lessonSlug });
+          quiz = await Quiz.findOne({ courseSlug });
+        }
       } catch (e) {
         // fallback
       }
     }
 
     if (!lesson) {
-      lesson = SEED_LESSONS.find(l => l.courseSlug === courseSlug && l.slug === lessonSlug);
+      lesson = SEED_LESSONS.find(
+        (l) =>
+          (l.slug === lessonSlug || l.id === lessonSlug) &&
+          (targetLevel ? l.level === targetLevel : l.courseSlug === courseSlug || String(l.level) === courseSlug)
+      );
+      if (!lesson) {
+        lesson = SEED_LESSONS.find((l) => l.slug === lessonSlug);
+      }
     }
+
     if (!lesson) {
       return res.status(404).json({ success: false, message: 'Lesson not found' });
     }
 
-    const { SEED_QUIZZES } = require('../services/seedService');
     if (!quiz) {
-      quiz = SEED_QUIZZES.find(q => q.courseSlug === courseSlug);
+      quiz = SEED_QUIZZES.find(
+        (q) => q.courseSlug === lesson.courseSlug || q.courseSlug === courseSlug
+      ) || SEED_QUIZZES[0];
     }
 
-    const allLessons = SEED_LESSONS.filter(l => l.courseSlug === courseSlug).sort((a, b) => a.order - b.order);
+    const allLessons = SEED_LESSONS.filter(
+      (l) => l.courseSlug === lesson.courseSlug || l.level === lesson.level
+    ).sort((a, b) => a.order - b.order);
+
     let prevLesson = null;
     let nextLesson = null;
     if (allLessons.length > 0) {
-      const idx = allLessons.findIndex(l => l.slug === lessonSlug);
+      const idx = allLessons.findIndex((l) => l.slug === lesson.slug);
       if (idx > 0) prevLesson = { title: allLessons[idx - 1].title, slug: allLessons[idx - 1].slug };
-      if (idx < allLessons.length - 1) nextLesson = { title: allLessons[idx + 1].title, slug: allLessons[idx + 1].slug };
+      if (idx < allLessons.length - 1)
+        nextLesson = { title: allLessons[idx + 1].title, slug: allLessons[idx + 1].slug };
     }
 
     res.status(200).json({
@@ -129,7 +173,7 @@ const getLessonBySlug = async (req, res, next) => {
       },
     });
   } catch (err) {
-    const fallbackLesson = SEED_LESSONS.find(l => l.courseSlug === req.params.courseSlug && l.slug === req.params.lessonSlug);
+    const fallbackLesson = SEED_LESSONS.find((l) => l.slug === req.params.lessonSlug);
     if (fallbackLesson) {
       return res.status(200).json({
         success: true,

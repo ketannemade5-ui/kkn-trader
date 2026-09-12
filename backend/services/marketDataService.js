@@ -2,7 +2,7 @@
 // Multi-timeframe OHLCV generator, Binance Live Feed integration, and Real-time quote streaming
 
 const BASE_INSTRUMENTS = {
-  'XAU/USD': { name: 'Gold / US Dollar', category: 'Metals', basePrice: 2685.50, spread: 0.25, pipSize: 0.1, digits: 2, high24: 2712.30, low24: 2674.10, status: 'OPEN', change24: 0.75 },
+  // MAJORS (7 Pairs)
   'EUR/USD': { name: 'Euro / US Dollar', category: 'Forex', basePrice: 1.0875, spread: 0.00012, pipSize: 0.0001, digits: 5, high24: 1.0910, low24: 1.0845, status: 'OPEN', change24: 0.22 },
   'GBP/USD': { name: 'British Pound / US Dollar', category: 'Forex', basePrice: 1.2980, spread: 0.00016, pipSize: 0.0001, digits: 5, high24: 1.3025, low24: 1.2940, status: 'OPEN', change24: -0.15 },
   'USD/JPY': { name: 'US Dollar / Japanese Yen', category: 'Forex', basePrice: 153.60, spread: 0.015, pipSize: 0.01, digits: 3, high24: 154.25, low24: 152.95, status: 'OPEN', change24: 0.38 },
@@ -10,6 +10,44 @@ const BASE_INSTRUMENTS = {
   'AUD/USD': { name: 'Australian Dollar / US Dollar', category: 'Forex', basePrice: 0.6590, spread: 0.00014, pipSize: 0.0001, digits: 5, high24: 0.6630, low24: 0.6555, status: 'OPEN', change24: 0.45 },
   'USD/CAD': { name: 'US Dollar / Canadian Dollar', category: 'Forex', basePrice: 1.3910, spread: 0.00016, pipSize: 0.0001, digits: 5, high24: 1.3950, low24: 1.3870, status: 'OPEN', change24: -0.11 },
   'NZD/USD': { name: 'New Zealand Dollar / US Dollar', category: 'Forex', basePrice: 0.5960, spread: 0.00018, pipSize: 0.0001, digits: 5, high24: 0.5995, low24: 0.5925, status: 'OPEN', change24: 0.18 },
+
+  // CROSSES (20 Pairs)
+  'EUR/GBP': { name: 'Euro / British Pound', category: 'Forex', basePrice: 0.8380, spread: 0.00015, pipSize: 0.0001, digits: 5, high24: 0.8410, low24: 0.8360, status: 'OPEN', change24: 0.12 },
+  'EUR/JPY': { name: 'Euro / Japanese Yen', category: 'Forex', basePrice: 167.05, spread: 0.018, pipSize: 0.01, digits: 3, high24: 167.80, low24: 166.40, status: 'OPEN', change24: 0.45 },
+  'EUR/CHF': { name: 'Euro / Swiss Franc', category: 'Forex', basePrice: 0.9620, spread: 0.00016, pipSize: 0.0001, digits: 5, high24: 0.9650, low24: 0.9590, status: 'OPEN', change24: -0.05 },
+  'EUR/AUD': { name: 'Euro / Australian Dollar', category: 'Forex', basePrice: 1.6500, spread: 0.00022, pipSize: 0.0001, digits: 5, high24: 1.6560, low24: 1.6440, status: 'OPEN', change24: 0.35 },
+  'EUR/CAD': { name: 'Euro / Canadian Dollar', category: 'Forex', basePrice: 1.5125, spread: 0.00020, pipSize: 0.0001, digits: 5, high24: 1.5180, low24: 1.5070, status: 'OPEN', change24: 0.18 },
+  'EUR/NZD': { name: 'Euro / New Zealand Dollar', category: 'Forex', basePrice: 1.8245, spread: 0.00025, pipSize: 0.0001, digits: 5, high24: 1.8310, low24: 1.8180, status: 'OPEN', change24: 0.28 },
+  'GBP/JPY': { name: 'British Pound / Japanese Yen', category: 'Forex', basePrice: 199.35, spread: 0.022, pipSize: 0.01, digits: 3, high24: 200.20, low24: 198.50, status: 'OPEN', change24: 0.55 },
+  'GBP/CHF': { name: 'British Pound / Swiss Franc', category: 'Forex', basePrice: 1.1480, spread: 0.00020, pipSize: 0.0001, digits: 5, high24: 1.1520, low24: 1.1440, status: 'OPEN', change24: -0.12 },
+  'GBP/AUD': { name: 'British Pound / Australian Dollar', category: 'Forex', basePrice: 1.9690, spread: 0.00026, pipSize: 0.0001, digits: 5, high24: 1.9760, low24: 1.9620, status: 'OPEN', change24: 0.32 },
+  'GBP/CAD': { name: 'British Pound / Canadian Dollar', category: 'Forex', basePrice: 1.8055, spread: 0.00024, pipSize: 0.0001, digits: 5, high24: 1.8120, low24: 1.7990, status: 'OPEN', change24: 0.15 },
+  'GBP/NZD': { name: 'British Pound / New Zealand Dollar', category: 'Forex', basePrice: 2.1770, spread: 0.00030, pipSize: 0.0001, digits: 5, high24: 2.1850, low24: 2.1690, status: 'OPEN', change24: 0.40 },
+  'AUD/JPY': { name: 'Australian Dollar / Japanese Yen', category: 'Forex', basePrice: 101.20, spread: 0.018, pipSize: 0.01, digits: 3, high24: 101.80, low24: 100.60, status: 'OPEN', change24: 0.25 },
+  'AUD/CHF': { name: 'Australian Dollar / Swiss Franc', category: 'Forex', basePrice: 0.5830, spread: 0.00018, pipSize: 0.0001, digits: 5, high24: 0.5865, low24: 0.5795, status: 'OPEN', change24: -0.10 },
+  'AUD/CAD': { name: 'Australian Dollar / Canadian Dollar', category: 'Forex', basePrice: 0.9165, spread: 0.00018, pipSize: 0.0001, digits: 5, high24: 0.9205, low24: 0.9125, status: 'OPEN', change24: 0.05 },
+  'AUD/NZD': { name: 'Australian Dollar / New Zealand Dollar', category: 'Forex', basePrice: 1.1055, spread: 0.00020, pipSize: 0.0001, digits: 5, high24: 1.1095, low24: 1.1015, status: 'OPEN', change24: 0.14 },
+  'CAD/JPY': { name: 'Canadian Dollar / Japanese Yen', category: 'Forex', basePrice: 110.40, spread: 0.018, pipSize: 0.01, digits: 3, high24: 111.00, low24: 109.80, status: 'OPEN', change24: 0.30 },
+  'CAD/CHF': { name: 'Canadian Dollar / Swiss Franc', category: 'Forex', basePrice: 0.6360, spread: 0.00018, pipSize: 0.0001, digits: 5, high24: 0.6395, low24: 0.6325, status: 'OPEN', change24: -0.08 },
+  'CHF/JPY': { name: 'Swiss Franc / Japanese Yen', category: 'Forex', basePrice: 173.65, spread: 0.024, pipSize: 0.01, digits: 3, high24: 174.40, low24: 172.90, status: 'OPEN', change24: 0.42 },
+  'NZD/JPY': { name: 'New Zealand Dollar / Japanese Yen', category: 'Forex', basePrice: 91.55, spread: 0.020, pipSize: 0.01, digits: 3, high24: 92.10, low24: 91.00, status: 'OPEN', change24: 0.20 },
+  'NZD/CHF': { name: 'New Zealand Dollar / Swiss Franc', category: 'Forex', basePrice: 0.5270, spread: 0.00020, pipSize: 0.0001, digits: 5, high24: 0.5305, low24: 0.5235, status: 'OPEN', change24: -0.15 },
+
+  // EMERGING & EXOTICS
+  'USD/INR': { name: 'US Dollar / Indian Rupee', category: 'Forex', basePrice: 84.10, spread: 0.04, pipSize: 0.01, digits: 2, high24: 84.30, low24: 83.95, status: 'OPEN', change24: 0.08 },
+  'USD/SGD': { name: 'US Dollar / Singapore Dollar', category: 'Forex', basePrice: 1.3250, spread: 0.00025, pipSize: 0.0001, digits: 5, high24: 1.3290, low24: 1.3210, status: 'OPEN', change24: -0.05 },
+  'USD/HKD': { name: 'US Dollar / Hong Kong Dollar', category: 'Forex', basePrice: 7.7750, spread: 0.00030, pipSize: 0.0001, digits: 5, high24: 7.7800, low24: 7.7700, status: 'OPEN', change24: 0.01 },
+  'USD/CNH': { name: 'US Dollar / Chinese Yuan', category: 'Forex', basePrice: 7.1950, spread: 0.00040, pipSize: 0.0001, digits: 5, high24: 7.2100, low24: 7.1800, status: 'OPEN', change24: 0.12 },
+  'USD/TRY': { name: 'US Dollar / Turkish Lira', category: 'Forex', basePrice: 34.35, spread: 0.05, pipSize: 0.01, digits: 3, high24: 34.60, low24: 34.10, status: 'OPEN', change24: 0.40 },
+  'USD/ZAR': { name: 'US Dollar / South African Rand', category: 'Forex', basePrice: 17.65, spread: 0.03, pipSize: 0.01, digits: 3, high24: 17.85, low24: 17.45, status: 'OPEN', change24: -0.35 },
+  'USD/MXN': { name: 'US Dollar / Mexican Peso', category: 'Forex', basePrice: 20.25, spread: 0.03, pipSize: 0.01, digits: 3, high24: 20.45, low24: 20.05, status: 'OPEN', change24: 0.25 },
+  'USD/SEK': { name: 'US Dollar / Swedish Krona', category: 'Forex', basePrice: 10.85, spread: 0.015, pipSize: 0.001, digits: 4, high24: 10.95, low24: 10.75, status: 'OPEN', change24: 0.15 },
+  'USD/NOK': { name: 'US Dollar / Norwegian Krone', category: 'Forex', basePrice: 11.05, spread: 0.015, pipSize: 0.001, digits: 4, high24: 11.15, low24: 10.95, status: 'OPEN', change24: -0.10 },
+  'USD/DKK': { name: 'US Dollar / Danish Krone', category: 'Forex', basePrice: 6.9450, spread: 0.0010, pipSize: 0.0001, digits: 5, high24: 6.9700, low24: 6.9200, status: 'OPEN', change24: 0.05 },
+  'EUR/PLN': { name: 'Euro / Polish Zloty', category: 'Forex', basePrice: 4.3550, spread: 0.0015, pipSize: 0.0001, digits: 5, high24: 4.3750, low24: 4.3350, status: 'OPEN', change24: -0.08 },
+
+  // METALS, CRYPTO, INDICES, COMMODITIES
+  'XAU/USD': { name: 'Gold / US Dollar', category: 'Metals', basePrice: 2685.50, spread: 0.25, pipSize: 0.1, digits: 2, high24: 2712.30, low24: 2674.10, status: 'OPEN', change24: 0.75 },
   'XAG/USD': { name: 'Silver / US Dollar', category: 'Metals', basePrice: 31.85, spread: 0.02, pipSize: 0.01, digits: 3, high24: 32.40, low24: 31.30, status: 'OPEN', change24: 1.45 },
   'BTC/USD': { name: 'Bitcoin / US Dollar', category: 'Crypto', basePrice: 79650.00, spread: 5.00, pipSize: 1.0, digits: 2, high24: 80800.00, low24: 78500.00, status: 'OPEN', change24: 2.15, binanceSymbol: 'BTCUSDT' },
   'ETH/USD': { name: 'Ethereum / US Dollar', category: 'Crypto', basePrice: 3240.00, spread: 0.80, pipSize: 0.1, digits: 2, high24: 3310.00, low24: 3180.00, status: 'OPEN', change24: 2.45, binanceSymbol: 'ETHUSDT' },
@@ -42,7 +80,7 @@ Object.keys(BASE_INSTRUMENTS).forEach(symbol => {
     status: spec.status,
     volume24: Math.floor(120000 + Math.random() * 500000),
     lastUpdated: new Date().toISOString(),
-    isLiveFeed: spec.category === 'Crypto', // Live from Binance or high-fidelity tick engine
+    isLiveFeed: Boolean(spec.binanceSymbol),
   };
 });
 
@@ -80,7 +118,7 @@ const fetchLiveBinanceTickers = async () => {
 fetchLiveBinanceTickers();
 setInterval(fetchLiveBinanceTickers, 10000);
 
-// Simulate realistic high-frequency market micro-ticks for all non-crypto or between external ticks
+// Realistic high-frequency market micro-ticks for all non-crypto or between external ticks
 setInterval(() => {
   Object.keys(liveQuotes).forEach(symbol => {
     const q = liveQuotes[symbol];
@@ -150,57 +188,69 @@ const generateOHLCV = async (symbol, timeframe = '1H', limit = 150) => {
       if (realCandles && realCandles.length > 0) {
         return { candles: realCandles, isLiveFeed: true };
       }
-    } catch (e) {
-      // fallback to algorithmic synthesis below
+    } catch (err) {
+      // Fall through to deterministic synthetic generator
     }
   }
 
-  const tfMinutesMap = {
-    '1m': 1,
-    '5m': 5,
-    '15m': 15,
-    '30m': 30,
-    '1H': 60,
-    '4H': 240,
-    '1D': 1440,
-    '1W': 10080,
+  // Timeframe interval in seconds
+  const tfSecondsMap = {
+    '1m': 60,
+    '5m': 300,
+    '15m': 900,
+    '30m': 1800,
+    '1H': 3600,
+    '4H': 14400,
+    '1D': 86400,
+    '1W': 604800,
   };
-
-  const intervalMins = tfMinutesMap[timeframe] || 60;
-  const intervalSec = intervalMins * 60;
+  const step = tfSecondsMap[timeframe] || 3600;
   const nowSec = Math.floor(Date.now() / 1000);
+  // Align to step boundary
+  const currentCandleTime = Math.floor(nowSec / step) * step;
 
-  // Align latest candle to interval boundary
-  const currentCandleTime = Math.floor(nowSec / intervalSec) * intervalSec;
+  const count = Math.min(Math.max(limit, 50), 300);
   const candles = [];
 
-  // Generate historical prices going backwards, then reverse
+  const volMap = {
+    'Forex': 0.0007,
+    'Metals': 0.0012,
+    'Crypto': 0.0025,
+    'Indices': 0.0010,
+    'Commodities': 0.0015,
+  };
+  const candleVolatility = (volMap[spec.category] || 0.001) * Math.sqrt(step / 3600);
+
+  // Seed price backward from current quote
   let runningClose = q.price;
-  const count = Math.min(limit, 300);
+  const tempReversed = [];
 
-  for (let i = count - 1; i >= 0; i--) {
-    const candleTime = currentCandleTime - (i * intervalSec);
-    const volatility = q.price * (spec.category === 'Crypto' ? 0.0035 : spec.category === 'Metals' ? 0.002 : 0.001) * Math.sqrt(intervalMins / 30);
+  for (let i = 0; i < count; i++) {
+    const t = currentCandleTime - i * step;
 
-    const closeOffset = (Math.random() - 0.495) * volatility;
-    const openOffset = (Math.random() - 0.495) * volatility;
+    // Deterministic pseudo-randomness based on time and symbol
+    const seed = Math.sin(t * 0.0001 + cleanSymbol.charCodeAt(0)) * 10000;
+    const rnd1 = (seed - Math.floor(seed));
+    const rnd2 = (Math.cos(t * 0.0001 + 1) * 10000) % 1;
+    const rnd3 = (Math.sin(t * 0.0002 + 2) * 10000) % 1;
 
-    let open = Number((runningClose - closeOffset).toFixed(spec.digits));
-    let close = Number((open + openOffset).toFixed(spec.digits));
-    if (i === 0) {
-      // Latest candle close is current live price
-      close = q.price;
-    }
+    const delta = (rnd1 - 0.495) * runningClose * candleVolatility;
+    const open = Number((runningClose - delta).toFixed(spec.digits));
+    const close = Number(runningClose.toFixed(spec.digits));
 
-    const highWick = Math.random() * volatility * 0.7;
-    const lowWick = Math.random() * volatility * 0.7;
+    const maxOC = Math.max(open, close);
+    const minOC = Math.min(open, close);
 
-    const high = Number((Math.max(open, close) + highWick).toFixed(spec.digits));
-    const low = Number((Math.max(0.0001, Math.min(open, close) - lowWick)).toFixed(spec.digits));
-    const volume = Math.floor(800 + Math.random() * 5200 * (intervalMins / 15));
+    const highExtra = Math.abs(rnd2) * runningClose * candleVolatility * 0.8;
+    const lowExtra = Math.abs(rnd3) * runningClose * candleVolatility * 0.8;
 
-    candles.push({
-      time: candleTime,
+    const high = Number((maxOC + highExtra).toFixed(spec.digits));
+    const low = Number(Math.max(0.00001, minOC - lowExtra).toFixed(spec.digits));
+
+    const volume = Math.floor(1000 + Math.abs(rnd1) * 25000);
+
+    tempReversed.push({
+      time: t,
       open,
       high,
       low,
@@ -208,40 +258,46 @@ const generateOHLCV = async (symbol, timeframe = '1H', limit = 150) => {
       volume,
     });
 
+    // Step backward
     runningClose = open;
   }
 
-  // Sort ascending by time strictly
-  candles.sort((a, b) => a.time - b.time);
+  // Reverse to chronological ascending order
+  candles.push(...tempReversed.reverse());
 
-  // Eliminate any duplicate timestamps
-  const uniqueCandles = [];
-  const seenTimes = new Set();
-  for (const c of candles) {
-    if (!seenTimes.has(c.time)) {
-      seenTimes.add(c.time);
-      uniqueCandles.push(c);
-    }
+  // Ensure current candle matches live quote close
+  if (candles.length > 0) {
+    const last = candles[candles.length - 1];
+    last.close = q.price;
+    if (q.price > last.high) last.high = q.price;
+    if (q.price < last.low) last.low = q.price;
   }
 
-  return { candles: uniqueCandles, isLiveFeed: spec.category === 'Crypto' };
+  return { candles, isLiveFeed: false };
 };
 
-const getQuotes = (category = null) => {
-  const all = Object.values(liveQuotes);
-  if (!category || category === 'All') return all;
-  return all.filter(item => item.category.toLowerCase() === category.toLowerCase());
+const getQuotes = (category) => {
+  if (!category || category === 'All') {
+    return Object.values(liveQuotes);
+  }
+  return Object.values(liveQuotes).filter(q => q.category.toLowerCase() === category.toLowerCase());
 };
 
-const getQuoteBySymbol = (symbol) => {
-  const cleanSymbol = (symbol || '').toUpperCase().replace('-', '/');
-  return liveQuotes[cleanSymbol] || null;
+const getQuote = (symbol) => {
+  const clean = (symbol || 'XAU/USD').toUpperCase().replace('-', '/');
+  return liveQuotes[clean] || liveQuotes['XAU/USD'];
+};
+
+const getHistory = async (symbol, timeframe = '1H', limit = 150) => {
+  return await generateOHLCV(symbol, timeframe, limit);
 };
 
 module.exports = {
   BASE_INSTRUMENTS,
-  getQuotes,
-  getQuoteBySymbol,
-  generateOHLCV,
   liveQuotes,
+  getQuotes,
+  getQuote,
+  getQuoteBySymbol: getQuote,
+  getHistory,
+  generateOHLCV,
 };

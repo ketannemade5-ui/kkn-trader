@@ -20,6 +20,22 @@ const protect = async (req, res, next) => {
       }
 
       if (!user) {
+        // Look up in persistent file-backed userStore
+        const userStore = require('../services/userStore');
+        const storedUser = userStore.findById(decoded.id);
+        if (storedUser) {
+          req.user = {
+            _id: storedUser._id || storedUser.id,
+            id: storedUser._id || storedUser.id,
+            name: storedUser.name,
+            email: storedUser.email,
+            role: storedUser.role || 'USER',
+            experienceLevel: storedUser.experienceLevel || 'BEGINNER',
+            tradingGoals: storedUser.tradingGoals || [],
+          };
+          return next();
+        }
+
         // Resilient fallback for demo users & in-memory accounts
         if (decoded.id === 'demo_admin_id') {
           req.user = {

@@ -50,7 +50,7 @@ export const AboutPage = () => {
             Rather than chasing get-rich-quick schemes or indicator overload, we focus on what really works in global markets: <strong>Market Structure, Liquidity Pools, Fair Value Gaps, and Strict 1% Mathematical Risk Management</strong>.
           </p>
           <p>
-            Every concept taught in our 12 Academy levels can be immediately practiced in our $100,000 virtual trading terminal and tracked in our automated trade journal.
+            Every concept taught in our 20 Academy levels can be immediately practiced in our $100,000 virtual trading terminal and tracked in our automated trade journal.
           </p>
         </div>
       </div>

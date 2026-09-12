@@ -319,6 +319,8 @@ export const PositionsTable = () => {
                   <th className="py-3 px-3">Lots</th>
                   <th className="py-3 px-3">Entry</th>
                   <th className="py-3 px-3">Exit</th>
+                  <th className="py-3 px-3">SL / TP</th>
+                  <th className="py-3 px-3">R:R</th>
                   <th className="py-3 px-3">Reason</th>
                   <th className="py-3 px-3">Result</th>
                   <th className="py-3 px-4 text-right">Realized P/L ($)</th>
@@ -327,12 +329,19 @@ export const PositionsTable = () => {
               <tbody className="divide-y divide-slate-800/60 font-mono">
                 {tradeHistory.map((trade) => {
                   const isWin = trade.result === 'WIN';
+                  const closeDate = trade.closedAt ? new Date(trade.closedAt) : new Date();
+                  const pl = typeof trade.realizedPL === 'number' ? trade.realizedPL : 0;
+                  const plPct = typeof trade.realizedPLPercent === 'number' ? trade.realizedPLPercent : null;
+
                   return (
-                    <tr key={trade._id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="py-3 px-4 text-slate-400 text-[11px]">
-                        {new Date(trade.closedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <tr key={trade.tradeId || trade._id} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3 px-4 text-slate-400 text-[11px] whitespace-nowrap">
+                        <div>{closeDate.toLocaleDateString([], { month: 'short', day: 'numeric' })}</div>
+                        <div className="text-[10px] text-slate-500">
+                          {closeDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
                       </td>
-                      <td className="py-3 px-3 font-bold text-white">{trade.symbol}</td>
+                      <td className="py-3 px-3 font-bold text-white whitespace-nowrap">{trade.symbol}</td>
                       <td className="py-3 px-3">
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${
@@ -347,13 +356,30 @@ export const PositionsTable = () => {
                       <td className="py-3 px-3 text-slate-300">{trade.lots} L</td>
                       <td className="py-3 px-3 text-slate-400">{trade.entryPrice?.toLocaleString()}</td>
                       <td className="py-3 px-3 text-slate-300">{trade.exitPrice?.toLocaleString()}</td>
-                      <td className="py-3 px-3 text-slate-400 text-[11px] font-medium">
+                      <td className="py-3 px-3 text-[10px] text-slate-400 whitespace-nowrap">
+                        {trade.stopLoss ? (
+                          <div className="text-rose-400">SL: {trade.stopLoss}</div>
+                        ) : (
+                          <div>SL: None</div>
+                        )}
+                        {trade.takeProfit ? (
+                          <div className="text-emerald-400">TP: {trade.takeProfit}</div>
+                        ) : (
+                          <div>TP: None</div>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-slate-300 text-[11px]">
+                        {trade.riskRewardRatio || trade.riskRewardAchieved
+                          ? `1:${trade.riskRewardRatio || trade.riskRewardAchieved}`
+                          : '—'}
+                      </td>
+                      <td className="py-3 px-3 text-slate-400 text-[11px] font-medium whitespace-nowrap">
                         {trade.closeReason === 'STOP_LOSS' ? (
                           <span className="text-rose-400">Stop Loss</span>
                         ) : trade.closeReason === 'TAKE_PROFIT' ? (
                           <span className="text-emerald-400">Take Profit</span>
                         ) : (
-                          'Manual Close'
+                          'Manual'
                         )}
                       </td>
                       <td className="py-3 px-3">
@@ -370,11 +396,16 @@ export const PositionsTable = () => {
                         </span>
                       </td>
                       <td
-                        className={`py-3 px-4 text-right font-extrabold text-sm ${
-                          trade.realizedPL >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                        className={`py-3 px-4 text-right font-extrabold text-sm whitespace-nowrap ${
+                          pl >= 0 ? 'text-emerald-400' : 'text-rose-400'
                         }`}
                       >
-                        {trade.realizedPL >= 0 ? '+' : ''}${trade.realizedPL?.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        {pl >= 0 ? '+' : ''}${pl.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        {plPct !== null && (
+                          <span className="text-[10px] text-slate-400 font-normal block">
+                            ({pl >= 0 ? '+' : ''}{plPct}%)
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );

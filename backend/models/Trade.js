@@ -35,6 +35,18 @@ const tradeSchema = new mongoose.Schema({
   },
   stopLoss: Number,
   takeProfit: Number,
+  risk: {
+    type: Number,
+    default: 0,
+  },
+  reward: {
+    type: Number,
+    default: 0,
+  },
+  riskRewardRatio: {
+    type: Number,
+    default: 0,
+  },
   realizedPL: {
     type: Number,
     required: true,
@@ -51,6 +63,10 @@ const tradeSchema = new mongoose.Schema({
     type: String,
     enum: ['WIN', 'LOSS', 'BREAKEVEN'],
     required: true,
+  },
+  tradeStatus: {
+    type: String,
+    default: 'CLOSED',
   },
   closeReason: {
     type: String,

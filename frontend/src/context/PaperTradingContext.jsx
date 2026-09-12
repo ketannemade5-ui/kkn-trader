@@ -1,14 +1,66 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { paperTradingAPI, portfolioAPI } from '../services/api';
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
 
 const PaperTradingContext = createContext(null);
 
+const getStorageKey = (userId) => `kkn_trade_history_${userId || 'guest'}`;
+
+const loadCachedTrades = (userId) => {
+  try {
+    const key = getStorageKey(userId);
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+    const legacy = localStorage.getItem('kkn_trade_history');
+    if (legacy) {
+      const parsed = JSON.parse(legacy);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {
+    // ignore
+  }
+  return [];
+};
+
+const persistTrades = (userId, trades) => {
+  try {
+    if (!Array.isArray(trades)) return;
+    const key = getStorageKey(userId);
+    localStorage.setItem(key, JSON.stringify(trades));
+    localStorage.setItem('kkn_trade_history', JSON.stringify(trades));
+  } catch (e) {
+    // ignore
+  }
+};
+
+const mergeTradeLists = (existingList = [], incomingList = []) => {
+  const map = new Map();
+  (existingList || []).forEach((t) => {
+    if (!t) return;
+    const id = t.tradeId || t._id || `${t.symbol}_${t.closedAt || t.openedAt}`;
+    map.set(id, t);
+  });
+  (incomingList || []).forEach((t) => {
+    if (!t) return;
+    const id = t.tradeId || t._id || `${t.symbol}_${t.closedAt || t.openedAt}`;
+    map.set(id, { ...(map.get(id) || {}), ...t });
+  });
+  const merged = Array.from(map.values());
+  merged.sort((a, b) => new Date(b.closedAt || b.openedAt || 0) - new Date(a.closedAt || a.openedAt || 0));
+  return merged;
+};
+
 export const PaperTradingProvider = ({ children }) => {
+  const { user, isAuthenticated } = useAuth();
+  const userId = user?.id || user?._id || 'guest';
+
   const [positions, setPositions] = useState([]);
   const [pendingOrders, setPendingOrders] = useState([]);
-  const [tradeHistory, setTradeHistory] = useState([]);
+  const [tradeHistory, setTradeHistory] = useState(() => loadCachedTrades(userId));
   const [portfolio, setPortfolio] = useState({
     balance: 100000.00,
     equity: 100000.00,
@@ -24,8 +76,15 @@ export const PaperTradingProvider = ({ children }) => {
   });
   const [loading, setLoading] = useState(false);
 
-  const { isAuthenticated } = useAuth();
   const { success, error, info } = useToast();
+
+  // Load user-specific cached trades on auth state change
+  useEffect(() => {
+    const cached = loadCachedTrades(userId);
+    if (cached.length > 0) {
+      setTradeHistory((prev) => mergeTradeLists(prev, cached));
+    }
+  }, [userId]);
 
   const fetchPaperData = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -46,12 +105,17 @@ export const PaperTradingProvider = ({ children }) => {
       }
 
       if (histRes.status === 'fulfilled' && histRes.value.success) {
-        setTradeHistory(histRes.value.data || []);
+        const dbTrades = histRes.value.data || [];
+        setTradeHistory((prev) => {
+          const merged = mergeTradeLists(prev, dbTrades);
+          persistTrades(userId, merged);
+          return merged;
+        });
       }
     } catch (err) {
       console.warn('Paper trading fetch notice:', err.message);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, userId]);
 
   useEffect(() => {
     fetchPaperData();
@@ -85,11 +149,19 @@ export const PaperTradingProvider = ({ children }) => {
     try {
       const res = await paperTradingAPI.closePosition(positionId);
       if (res.success) {
-        const pl = res.data.trade.realizedPL;
+        const closedTrade = res.data?.trade;
+        const pl = closedTrade?.realizedPL || 0;
         if (pl >= 0) {
           success(`Position closed! Realized Profit: +$${pl.toFixed(2)}`);
         } else {
           info(`Position closed. Realized Loss: -$${Math.abs(pl).toFixed(2)} (Trade saved to Journal)`);
+        }
+        if (closedTrade) {
+          setTradeHistory((prev) => {
+            const merged = mergeTradeLists([closedTrade], prev);
+            persistTrades(userId, merged);
+            return merged;
+          });
         }
         await fetchPaperData();
         return { success: true };
@@ -118,7 +190,7 @@ export const PaperTradingProvider = ({ children }) => {
     try {
       const res = await paperTradingAPI.resetAccount();
       if (res.success) {
-        success('Virtual Account reset to $100,000.00 starting balance.');
+        success('Virtual Account balance reset to $100,000.00.');
         await fetchPaperData();
         return { success: true };
       }
@@ -149,3 +221,4 @@ export const PaperTradingProvider = ({ children }) => {
 };
 
 export const usePaperTrading = () => useContext(PaperTradingContext);
+

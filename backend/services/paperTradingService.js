@@ -123,12 +123,21 @@ const closePosition = async (userId, positionId, closeReason = 'MANUAL') => {
   if (realizedPL > 0.05) result = 'WIN';
   else if (realizedPL < -0.05) result = 'LOSS';
 
+  let plannedRisk = 0;
+  let plannedReward = 0;
+  let riskRewardRatio = 0;
   let riskRewardAchieved = 0;
   if (position.stopLoss) {
-    const plannedRisk = Math.abs(position.entryPrice - position.stopLoss) * position.units;
+    plannedRisk = Number((Math.abs(position.entryPrice - position.stopLoss) * position.units).toFixed(2));
     if (plannedRisk > 0) {
       riskRewardAchieved = Number((realizedPL / plannedRisk).toFixed(2));
     }
+  }
+  if (position.takeProfit) {
+    plannedReward = Number((Math.abs(position.takeProfit - position.entryPrice) * position.units).toFixed(2));
+  }
+  if (plannedRisk > 0 && plannedReward > 0) {
+    riskRewardRatio = Number((plannedReward / plannedRisk).toFixed(2));
   }
 
   // Mark position closed
@@ -146,12 +155,16 @@ const closePosition = async (userId, positionId, closeReason = 'MANUAL') => {
     lots: position.lots,
     entryPrice: position.entryPrice,
     exitPrice: currentPrice,
-    stopLoss: position.stopLoss,
-    takeProfit: position.takeProfit,
+    stopLoss: position.stopLoss || null,
+    takeProfit: position.takeProfit || null,
+    risk: plannedRisk,
+    reward: plannedReward,
+    riskRewardRatio: riskRewardRatio,
     realizedPL,
     realizedPLPercent,
     riskRewardAchieved,
     result,
+    tradeStatus: 'CLOSED',
     closeReason,
     openedAt: position.openedAt,
     closedAt: new Date(),

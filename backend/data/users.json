@@ -1,0 +1,81 @@
+[
+  {
+    "_id": "demo_user_id",
+    "id": "demo_user_id",
+    "name": "KKN Pro Trader",
+    "email": "trader@kkntrader.com",
+    "passwordHash": "$2a$10$w09ZkH8sD0g46xY9qWw6O.zJ5zYc2Xb1xV1zV1zV1zV1zV1zV1zV1",
+    "plainPassword": "Trader@KKN2026!",
+    "role": "USER",
+    "experienceLevel": "INTERMEDIATE",
+    "tradingGoals": [
+      "Learn Price Action",
+      "Practice $100,000 Paper Account",
+      "Master Risk Management"
+    ],
+    "status": "ACTIVE",
+    "createdAt": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "_id": "demo_admin_id",
+    "id": "demo_admin_id",
+    "name": "KKN Master Trader",
+    "email": "admin@kkntrader.com",
+    "passwordHash": "$2a$10$w09ZkH8sD0g46xY9qWw6O.zJ5zYc2Xb1xV1zV1zV1zV1zV1zV1zV1",
+    "plainPassword": "Admin@KKNTrader2026!",
+    "role": "ADMIN",
+    "experienceLevel": "ADVANCED",
+    "tradingGoals": [
+      "Master SMC Order Flow",
+      "Institutional Risk Control",
+      "Curriculum Excellence"
+    ],
+    "status": "ACTIVE",
+    "createdAt": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "_id": "user_1789203940533_bqtfb",
+    "id": "user_1789203940533_dvtnn",
+    "name": "Alex Rivera",
+    "email": "alex_trader_1789203940374@kkntrader.com",
+    "passwordHash": "$2a$10$mHryRVD8/nT/WW6kzmyJLeidVVm2jwp/iBF/jkkyATpOdgSmFBqQq",
+    "role": "USER",
+    "experienceLevel": "INTERMEDIATE",
+    "tradingGoals": [
+      "Learn Price Action",
+      "Practice $100,000 Paper Account"
+    ],
+    "status": "ACTIVE",
+    "createdAt": "2026-09-12T09:05:40.533Z"
+  },
+  {
+    "_id": "user_1789203957449_fy73w",
+    "id": "user_1789203957449_dvl6c",
+    "name": "Alex Rivera",
+    "email": "alex_trader_1789203957332@kkntrader.com",
+    "passwordHash": "$2a$10$VJuz73c8URluk6RZ6NeB7uFbpvDQmyXEUZBmdM33tZ.Sy36Tp9Raa",
+    "role": "USER",
+    "experienceLevel": "INTERMEDIATE",
+    "tradingGoals": [
+      "Learn Price Action",
+      "Practice $100,000 Paper Account"
+    ],
+    "status": "ACTIVE",
+    "createdAt": "2026-09-12T09:05:57.449Z"
+  },
+  {
+    "_id": "user_1789204036977_wjwx7",
+    "id": "user_1789204036977_teumk",
+    "name": "Ketan Pro Trader",
+    "email": "trader_pro_1789204036873@kkntrader.com",
+    "passwordHash": "$2a$10$KNLlM8bdQvJORT9PaaJwQew/R1iLkzFS9bl68w1fJSv27zTwOlTly",
+    "role": "USER",
+    "experienceLevel": "ADVANCED",
+    "tradingGoals": [
+      "Learn Price Action",
+      "Practice $100,000 Paper Account"
+    ],
+    "status": "ACTIVE",
+    "createdAt": "2026-09-12T09:07:16.977Z"
+  }
+]

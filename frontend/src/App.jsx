@@ -14,6 +14,7 @@ import { ProtectedRoute } from './components/layout/ProtectedRoute';
 // Pages
 import { HomePage } from './pages/HomePage';
 import { AcademyPage } from './pages/AcademyPage';
+import { CourseDetailPage } from './pages/CourseDetailPage';
 import { LessonPage } from './pages/LessonPage';
 import { MarketsPage } from './pages/MarketsPage';
 import { PaperTradingPage } from './pages/PaperTradingPage';
@@ -50,9 +51,24 @@ export const App = () => {
                 <Routes>
                   {/* Public Core Routes */}
                   <Route path="/" element={<HomePage />} />
+
+                  {/* 20-Level Academy & Course Routes */}
+                  <Route path="/academy" element={<AcademyPage />} />
+                  <Route path="/academy/level/:levelId" element={<CourseDetailPage />} />
+                  <Route path="/academy/level/:levelId/lesson/:lessonId" element={<LessonPage />} />
+                  <Route path="/academy/level/:levelId/:lessonSlug" element={<LessonPage />} />
+                  <Route path="/academy/:courseSlug" element={<CourseDetailPage />} />
+                  <Route path="/academy/:courseSlug/:lessonSlug" element={<LessonPage />} />
+
+                  {/* Legacy / Alias Learn & Courses Routes */}
                   <Route path="/learn" element={<AcademyPage />} />
-                  <Route path="/learn/:courseSlug" element={<AcademyPage />} />
+                  <Route path="/learn/:courseSlug" element={<CourseDetailPage />} />
                   <Route path="/learn/:courseSlug/:lessonSlug" element={<LessonPage />} />
+                  <Route path="/courses" element={<AcademyPage />} />
+                  <Route path="/courses/:courseSlug" element={<CourseDetailPage />} />
+                  <Route path="/courses/:courseSlug/:lessonSlug" element={<LessonPage />} />
+
+                  {/* Live Markets & Paper Trading */}
                   <Route path="/markets" element={<MarketsPage />} />
                   <Route path="/trade" element={<PaperTradingPage />} />
                   <Route path="/papertrading" element={<PaperTradingPage />} />

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useMarket } from '../../context/MarketContext';
+import { FOREX_INSTRUMENTS } from '../../data/forexPairs';
 import {
   Search,
   Star,
@@ -13,7 +14,13 @@ export const WatchlistSidebar = () => {
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
 
-  const categories = ['All', 'Watchlist', 'Forex', 'Metals', 'Crypto', 'Indices'];
+  const categories = ['All', 'Watchlist', 'Majors', 'Crosses', 'Exotics', 'Metals', 'Crypto', 'Indices'];
+
+  // Match category from master instrument database if needed
+  const getInstrumentCategory = (sym) => {
+    const found = FOREX_INSTRUMENTS.find((f) => f.symbol === sym);
+    return found ? found.category : 'Forex';
+  };
 
   const filteredQuotes = quotes.filter((q) => {
     const matchesSearch =
@@ -24,20 +31,22 @@ export const WatchlistSidebar = () => {
 
     if (activeCategory === 'All') return true;
     if (activeCategory === 'Watchlist') return watchlist.includes(q.symbol);
-    return q.category.toLowerCase() === activeCategory.toLowerCase();
+
+    const instCat = getInstrumentCategory(q.symbol);
+    return instCat.toLowerCase() === activeCategory.toLowerCase() || q.category.toLowerCase() === activeCategory.toLowerCase();
   });
 
   return (
-    <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-3 shadow-2xl backdrop-blur-xl flex flex-col gap-3 h-full min-h-[450px]">
+    <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-3 shadow-2xl backdrop-blur-xl flex flex-col gap-3 h-full min-h-[480px]">
       {/* Search Header */}
       <div className="relative">
         <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
         <input
           type="text"
-          placeholder="Search symbol (e.g. Gold, EUR)..."
+          placeholder="Search symbol (e.g. Gold, EUR, JPY)..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:border-kkn-gold focus:outline-none"
+          className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:border-kkn-gold focus:outline-none font-mono"
         />
       </div>
 
@@ -59,7 +68,7 @@ export const WatchlistSidebar = () => {
       </div>
 
       {/* Instrument List */}
-      <div className="flex-1 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto space-y-1 pr-1 custom-scrollbar max-h-[580px]">
         {filteredQuotes.length === 0 ? (
           <div className="text-center py-8 text-xs text-slate-500 font-mono">
             No instruments found

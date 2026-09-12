@@ -169,19 +169,51 @@ const closeOpenPosition = async (req, res, next) => {
 
     pos.status = 'CLOSED';
     const realizedPL = pos.unrealizedPL || 0.00;
+    const realizedPLPercent = pos.unrealizedPLPercent || 0.00;
     const result = realizedPL > 0 ? 'WIN' : realizedPL < 0 ? 'LOSS' : 'BREAKEVEN';
 
+    let plannedRisk = 0;
+    let plannedReward = 0;
+    let riskRewardRatio = 0;
+    let riskRewardAchieved = 0;
+    if (pos.stopLoss) {
+      plannedRisk = Number((Math.abs(pos.entryPrice - pos.stopLoss) * pos.units).toFixed(2));
+      if (plannedRisk > 0) {
+        riskRewardAchieved = Number((realizedPL / plannedRisk).toFixed(2));
+      }
+    }
+    if (pos.takeProfit) {
+      plannedReward = Number((Math.abs(pos.takeProfit - pos.entryPrice) * pos.units).toFixed(2));
+    }
+    if (plannedRisk > 0 && plannedReward > 0) {
+      riskRewardRatio = Number((plannedReward / plannedRisk).toFixed(2));
+    }
+
+    const tradeId = `trade_${Date.now()}`;
     const trade = {
-      _id: `trade_${Date.now()}`,
+      _id: tradeId,
+      tradeId,
       userId,
+      positionId: pos._id,
       symbol: pos.symbol,
       side: pos.side,
       lots: pos.lots,
       entryPrice: pos.entryPrice,
       exitPrice: pos.currentPrice,
+      stopLoss: pos.stopLoss || null,
+      takeProfit: pos.takeProfit || null,
+      risk: plannedRisk,
+      reward: plannedReward,
+      riskRewardRatio: riskRewardRatio,
       realizedPL,
+      realizedPLPercent,
+      riskRewardAchieved,
       result,
+      tradeStatus: 'CLOSED',
+      closeReason: 'MANUAL',
+      openedAt: pos.openedAt || new Date(),
       closedAt: new Date(),
+      strategySetup: 'Price Action & Key Levels',
     };
 
     MEMORY_TRADES.unshift(trade);

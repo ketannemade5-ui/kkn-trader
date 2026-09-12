@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Compass,
   Globe,
@@ -16,6 +16,9 @@ import {
   ArrowRight,
   Clock,
   Sparkles,
+  Zap,
+  CheckCircle2,
+  BookOpen,
 } from 'lucide-react';
 
 const iconMap = {
@@ -31,9 +34,13 @@ const iconMap = {
   Cpu,
   Sliders,
   Award,
+  Zap,
+  Sparkles,
+  Clock,
 };
 
 export const CourseCard = ({ course, progress = 0 }) => {
+  const navigate = useNavigate();
   const IconComponent = iconMap[course.badgeIcon] || Compass;
 
   const difficultyColors = {
@@ -43,10 +50,23 @@ export const CourseCard = ({ course, progress = 0 }) => {
     'Institutional Master': 'bg-amber-500/10 text-amber-400 border-amber-500/30',
   };
 
+  const isCompleted = progress === 100;
+  const levelUrl = `/academy/level/${course.level}`;
+
   return (
-    <div className="glass-card rounded-2xl p-6 flex flex-col justify-between group hover:border-kkn-gold/40 transition-all duration-300">
+    <div
+      onClick={() => navigate(levelUrl)}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          navigate(levelUrl);
+        }
+      }}
+      className="glass-card rounded-2xl p-6 flex flex-col justify-between group hover:border-kkn-gold/50 transition-all duration-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-kkn-gold/40 relative overflow-hidden"
+    >
       <div>
-        {/* Header: Level Badge & Difficulty */}
+        {/* Top Header: Level Badge & Difficulty */}
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-kkn-gold/15 text-kkn-gold border border-kkn-gold/30">
@@ -72,39 +92,42 @@ export const CourseCard = ({ course, progress = 0 }) => {
         </h3>
 
         <p className="text-xs text-slate-400 leading-relaxed line-clamp-3 mb-4">
-          {course.description}
+          {course.tagline || course.description}
         </p>
       </div>
 
-      <div>
+      <div className="space-y-4">
         {/* Progress Bar */}
-        {progress > 0 && (
-          <div className="mb-4">
-            <div className="flex items-center justify-between text-xs font-mono mb-1">
-              <span className="text-slate-400">Progress</span>
-              <span className="text-kkn-gold font-bold">{progress}%</span>
-            </div>
-            <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gold-gradient rounded-full transition-all duration-500"
-                style={{ width: `${progress}%` }}
-              ></div>
-            </div>
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-xs font-mono">
+            <span className="text-slate-400">Level Progress</span>
+            <span className={`font-bold ${isCompleted ? 'text-emerald-400' : 'text-kkn-gold'}`}>
+              {isCompleted ? 'Completed ✓' : `${progress}%`}
+            </span>
           </div>
-        )}
+          <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${
+                isCompleted ? 'bg-emerald-500' : 'bg-gold-gradient'
+              }`}
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
 
         {/* Meta Stats & Link */}
-        <div className="pt-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 font-mono">
+        <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 font-mono">
           <span className="flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5 text-slate-500" />
-            ~{course.estimatedHours || 5} Hours
+            <BookOpen className="w-3.5 h-3.5 text-slate-500" />
+            {course.lessons ? `${course.lessons.length} Lessons` : '3 Lessons'}
           </span>
 
           <Link
-            to={`/learn/${course.slug}`}
+            to={levelUrl}
+            onClick={(e) => e.stopPropagation()}
             className="flex items-center gap-1 text-kkn-gold font-bold hover:translate-x-1 transition-transform group-hover:text-yellow-300"
           >
-            <span>Explore Level</span>
+            <span>{isCompleted ? 'Review Level' : 'Explore Level'}</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
