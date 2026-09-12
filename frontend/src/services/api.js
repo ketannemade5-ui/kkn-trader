@@ -94,9 +94,80 @@ export const journalAPI = {
   deleteEntry: (id) => API.delete(`/journal/${id}`),
 };
 
+// Gemini Direct Client Fallback (Guarantees real-time dynamic answers even if remote backend is sleeping or offline)
+const askGeminiDirect = async (prompt, apiKey) => {
+  const systemPrompt = `You are KKN AI, an institutional trading education assistant for KKN TRADER.
+Explain trading concepts clearly with strict risk management.
+Always return ONLY valid JSON with keys: title, summary, simpleExplanation, detailedExplanation, realMarketExample, keyPoints (array of strings), disclaimer.`;
+
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: `${systemPrompt}\n\nUser Question: ${prompt}` }] }],
+      generationConfig: { responseMimeType: 'application/json', temperature: 0.4 }
+    })
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error?.message || `Gemini status ${response.status}`);
+  }
+
+  const data = await response.json();
+  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!rawText) throw new Error('No content returned from Gemini');
+  const parsed = JSON.parse(rawText);
+
+  return {
+    success: true,
+    provider: 'gemini',
+    response: {
+      title: parsed.title || `Understanding "${prompt}"`,
+      summary: parsed.summary || '',
+      simpleExplanation: parsed.simpleExplanation || '',
+      detailedExplanation: parsed.detailedExplanation || '',
+      realMarketExample: parsed.realMarketExample || '',
+      keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints : [],
+      disclaimer: parsed.disclaimer || 'DISCLAIMER: KKN AI is strictly an educational learning tool.',
+    },
+    suggestedQuestions: [
+      'What is liquidity and how do institutions use it?',
+      'Explain the difference between BOS and CHoCH.',
+      'How does an Order Block form?',
+      'What is a Fair Value Gap (FVG)?',
+      'What are the core rules of 1% Risk Management?',
+      'Give me a step-by-step beginner trading roadmap.'
+    ],
+    createdAt: new Date().toISOString(),
+  };
+};
+
 // AI Assistant API
 export const aiAPI = {
-  ask: (prompt, context) => API.post('/ai/ask', { prompt, context }),
+  ask: async (prompt, context) => {
+    const clientGeminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    try {
+      // Race backend with a 5-second timeout in case remote Render instance is sleeping
+      const backendPromise = API.post('/ai/ask', { prompt, context });
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Backend latency timeout')), 5000)
+      );
+      const res = await Promise.race([backendPromise, timeoutPromise]);
+      if (res && res.provider === 'gemini') {
+        return res;
+      }
+      if (clientGeminiKey) {
+        return await askGeminiDirect(prompt, clientGeminiKey);
+      }
+      return res;
+    } catch (err) {
+      if (clientGeminiKey) {
+        return await askGeminiDirect(prompt, clientGeminiKey);
+      }
+      throw err;
+    }
+  },
 };
 
 // Tools & Calculator API

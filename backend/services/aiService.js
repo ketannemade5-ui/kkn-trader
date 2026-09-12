@@ -127,6 +127,51 @@ const TRADING_KNOWLEDGE_BASE = {
   }
 };
 
+const askGemini = async (prompt, apiKey) => {
+  const systemPrompt = `You are KKN AI, an institutional trading education assistant for KKN TRADER.
+Your goal is to break down trading concepts, technical analysis, Smart Money Concepts (SMC), market structure, order blocks, liquidity sweeps, candlestick patterns, and disciplined mathematical risk management into clear, intuitive lessons.
+Strict Guardrails:
+- Strictly educational. NEVER provide buy/sell signals or financial investment advice.
+- Emphasize strict risk management (1% rule, stop losses).
+- Always return ONLY a valid JSON object with the following exact keys:
+{
+  "title": "Clear concise topic title",
+  "summary": "1-2 sentence executive overview",
+  "simpleExplanation": "Intuitive beginner analogy or simple breakdown",
+  "detailedExplanation": "In-depth institutional analysis explaining the mechanics, order flow, or mathematical concepts",
+  "realMarketExample": "Concrete chart scenario with an instrument (e.g. XAU/USD, EUR/USD, BTC/USD, or US30), specific price numbers, and action",
+  "keyPoints": ["Bullet point 1", "Bullet point 2", "Bullet point 3", "Bullet point 4"],
+  "disclaimer": "DISCLAIMER: KKN AI is strictly an educational learning tool. It does not provide financial advice, trading signals, or guaranteed profit claims. All trading involves financial risk."
+}`;
+
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        parts: [{ text: `${systemPrompt}\n\nUser Question: ${prompt}` }]
+      }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.4,
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error?.message || `Gemini API status ${response.status}`);
+  }
+
+  const data = await response.json();
+  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!rawText) {
+    throw new Error('No content returned from Gemini model');
+  }
+
+  return JSON.parse(rawText);
+};
+
 const askAI = async ({ prompt, context = {} }) => {
   const query = (prompt || '').toLowerCase().trim();
   
@@ -134,7 +179,42 @@ const askAI = async ({ prompt, context = {} }) => {
     throw new Error('Please provide a valid question or trading topic.');
   }
 
-  // Find best match in knowledge base
+  // 1. Try Google Gemini API if key configured
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (apiKey) {
+    try {
+      const geminiData = await askGemini(prompt, apiKey);
+      return {
+        success: true,
+        prompt,
+        provider: 'gemini',
+        response: {
+          title: geminiData.title || `Understanding "${prompt}"`,
+          summary: geminiData.summary || '',
+          simpleExplanation: geminiData.simpleExplanation || '',
+          detailedExplanation: geminiData.detailedExplanation || '',
+          realMarketExample: geminiData.realMarketExample || '',
+          keyPoints: Array.isArray(geminiData.keyPoints) ? geminiData.keyPoints : [],
+          commonMistakes: Array.isArray(geminiData.commonMistakes) ? geminiData.commonMistakes : [],
+          relatedConcepts: Array.isArray(geminiData.relatedConcepts) ? geminiData.relatedConcepts : [],
+          disclaimer: geminiData.disclaimer || 'DISCLAIMER: KKN AI is strictly an educational learning tool. It does not provide financial advice, trading signals, or guaranteed profit claims. All trading involves financial risk.',
+        },
+        suggestedQuestions: [
+          'What is liquidity and how do institutions use it?',
+          'Explain the difference between BOS and CHoCH.',
+          'How does an Order Block form?',
+          'What is a Fair Value Gap (FVG)?',
+          'What are the core rules of 1% Risk Management?',
+          'Give me a step-by-step beginner trading roadmap.'
+        ],
+        createdAt: new Date().toISOString(),
+      };
+    } catch (geminiErr) {
+      console.warn('[Gemini AI Note]:', geminiErr.message, '- Falling back to smart knowledge base engine.');
+    }
+  }
+
+  // 2. Fallback to knowledge base
   let matchedKey = null;
   for (const key of Object.keys(TRADING_KNOWLEDGE_BASE)) {
     if (query.includes(key)) {
@@ -184,6 +264,7 @@ const askAI = async ({ prompt, context = {} }) => {
   return {
     success: true,
     prompt,
+    provider: 'offline_knowledge_base',
     response: {
       title: topicData.title,
       summary: topicData.summary,
