@@ -29,9 +29,10 @@ export const Navbar = () => {
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    logout();
     setUserDropdownOpen(false);
-    navigate('/');
+    setMobileMenuOpen(false);
+    logout();
+    navigate('/', { replace: true });
   };
 
   const navLinkClass = ({ isActive }) =>
@@ -173,9 +174,11 @@ export const Navbar = () => {
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700 hover:border-kkn-gold/40 text-slate-200 hover:text-white transition-all"
                   >
                     <div className="w-7 h-7 rounded-full bg-kkn-gold/20 border border-kkn-gold/40 flex items-center justify-center text-kkn-gold font-bold text-xs">
-                      {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                      {user?.name ? user.name.charAt(0).toUpperCase() : (user?.email?.charAt(0).toUpperCase() || 'U')}
                     </div>
-                    <span className="text-xs font-semibold max-w-[100px] truncate">{user?.name}</span>
+                    <span className="text-xs font-semibold max-w-[100px] truncate">
+                      {user?.name || user?.email?.split('@')[0] || 'Trader'}
+                    </span>
                     <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
                   </button>
 

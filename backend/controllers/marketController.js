@@ -1,5 +1,6 @@
 const { getQuotes, getQuoteBySymbol, generateOHLCV } = require('../services/marketDataService');
 const Watchlist = require('../models/Watchlist');
+const mongoose = require('mongoose');
 
 // @desc   Get all market instrument quotes (Forex, Metals, Indices, Crypto, Commodities)
 // @route  GET /api/markets/quotes
@@ -64,25 +65,49 @@ const getMarketHistory = async (req, res, next) => {
   }
 };
 
+const USER_WATCHLIST_MAP = new Map();
+
 // @desc   Get user's personal watchlist
 // @route  GET /api/markets/watchlist
 // @access Private
 const getUserWatchlist = async (req, res, next) => {
   try {
-    const userId = req.user.id || req.user._id;
-    let watchlist = await Watchlist.findOne({ userId });
-    if (!watchlist) {
-      watchlist = await Watchlist.create({
-        userId,
-        symbols: ['XAU/USD', 'EUR/USD', 'GBP/USD', 'BTC/USD', 'NASDAQ', 'US30'],
-      });
+    const userId = req.user?.uid || req.user?.id || req.user?._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required to view watchlist.' });
     }
 
-    const items = watchlist.symbols.map(sym => getQuoteBySymbol(sym)).filter(Boolean);
+    const defaultSymbols = ['XAU/USD', 'EUR/USD', 'GBP/USD', 'BTC/USD', 'NASDAQ', 'US30'];
+    let symbols = defaultSymbols;
+
+    if (mongoose.connection.readyState === 1) {
+      try {
+        let watchlist = await Watchlist.findOne({ userId });
+        if (!watchlist) {
+          watchlist = await Watchlist.create({
+            userId,
+            symbols: defaultSymbols,
+          });
+        }
+        symbols = watchlist.symbols;
+      } catch (e) {
+        if (!USER_WATCHLIST_MAP.has(String(userId))) {
+          USER_WATCHLIST_MAP.set(String(userId), [...defaultSymbols]);
+        }
+        symbols = USER_WATCHLIST_MAP.get(String(userId));
+      }
+    } else {
+      if (!USER_WATCHLIST_MAP.has(String(userId))) {
+        USER_WATCHLIST_MAP.set(String(userId), [...defaultSymbols]);
+      }
+      symbols = USER_WATCHLIST_MAP.get(String(userId));
+    }
+
+    const items = symbols.map(sym => getQuoteBySymbol(sym)).filter(Boolean);
 
     res.status(200).json({
       success: true,
-      symbols: watchlist.symbols,
+      symbols,
       data: items,
     });
   } catch (err) {
@@ -96,33 +121,70 @@ const getUserWatchlist = async (req, res, next) => {
 const toggleWatchlistSymbol = async (req, res, next) => {
   try {
     const { symbol } = req.body;
-    const userId = req.user.id || req.user._id;
+    const userId = req.user?.uid || req.user?.id || req.user?._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required to modify watchlist.' });
+    }
 
     if (!symbol) {
       return res.status(400).json({ success: false, message: 'Symbol is required' });
     }
 
     const cleanSymbol = symbol.toUpperCase().replace('-', '/');
-    let watchlist = await Watchlist.findOne({ userId });
-    if (!watchlist) {
-      watchlist = await Watchlist.create({ userId, symbols: [] });
-    }
-
-    const index = watchlist.symbols.indexOf(cleanSymbol);
+    let symbols = [];
     let action = 'added';
-    if (index > -1) {
-      watchlist.symbols.splice(index, 1);
-      action = 'removed';
-    } else {
-      watchlist.symbols.push(cleanSymbol);
-    }
 
-    await watchlist.save();
+    if (mongoose.connection.readyState === 1) {
+      try {
+        let watchlist = await Watchlist.findOne({ userId });
+        if (!watchlist) {
+          watchlist = await Watchlist.create({ userId, symbols: [] });
+        }
+
+        const index = watchlist.symbols.indexOf(cleanSymbol);
+        if (index > -1) {
+          watchlist.symbols.splice(index, 1);
+          action = 'removed';
+        } else {
+          watchlist.symbols.push(cleanSymbol);
+        }
+
+        await watchlist.save();
+        symbols = watchlist.symbols;
+      } catch (e) {
+        // memory fallback
+        if (!USER_WATCHLIST_MAP.has(String(userId))) {
+          USER_WATCHLIST_MAP.set(String(userId), ['XAU/USD', 'EUR/USD', 'GBP/USD', 'BTC/USD', 'NASDAQ', 'US30']);
+        }
+        const userSymbols = USER_WATCHLIST_MAP.get(String(userId));
+        const index = userSymbols.indexOf(cleanSymbol);
+        if (index > -1) {
+          userSymbols.splice(index, 1);
+          action = 'removed';
+        } else {
+          userSymbols.push(cleanSymbol);
+        }
+        symbols = userSymbols;
+      }
+    } else {
+      if (!USER_WATCHLIST_MAP.has(String(userId))) {
+        USER_WATCHLIST_MAP.set(String(userId), ['XAU/USD', 'EUR/USD', 'GBP/USD', 'BTC/USD', 'NASDAQ', 'US30']);
+      }
+      const userSymbols = USER_WATCHLIST_MAP.get(String(userId));
+      const index = userSymbols.indexOf(cleanSymbol);
+      if (index > -1) {
+        userSymbols.splice(index, 1);
+        action = 'removed';
+      } else {
+        userSymbols.push(cleanSymbol);
+      }
+      symbols = userSymbols;
+    }
 
     res.status(200).json({
       success: true,
       action,
-      symbols: watchlist.symbols,
+      symbols,
     });
   } catch (err) {
     next(err);

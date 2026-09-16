@@ -6,30 +6,63 @@ const mongoose = require('mongoose');
 
 const isDbConnected = () => mongoose.connection.readyState === 1;
 
-// In-memory paper trading state fallback
-let MEMORY_POSITIONS = [];
-let MEMORY_TRADES = [];
-let MEMORY_PORTFOLIO = {
-  balance: 100000.00,
-  equity: 100000.00,
-  usedMargin: 0.00,
-  availableMargin: 100000.00,
-  floatingPL: 0.00,
-  realizedPL: 0.00,
-  todayPL: 0.00,
-  totalTrades: 0,
-  winningTrades: 0,
-  losingTrades: 0,
-  winRate: 0.00,
-  equityHistory: [{ timestamp: new Date(), balance: 100000.00, equity: 100000.00 }],
+// Helper to strictly extract the authenticated user ID from middleware
+const getUserId = (req) => {
+  return req.user?.uid || req.user?.id || req.user?._id;
+};
+
+// User-isolated in-memory fallback stores
+const USER_POSITIONS_MAP = new Map();
+const USER_TRADES_MAP = new Map();
+const USER_PORTFOLIO_MAP = new Map();
+
+const getUserPositions = (userId) => {
+  const uid = String(userId);
+  if (!USER_POSITIONS_MAP.has(uid)) {
+    USER_POSITIONS_MAP.set(uid, []);
+  }
+  return USER_POSITIONS_MAP.get(uid);
+};
+
+const getUserTrades = (userId) => {
+  const uid = String(userId);
+  if (!USER_TRADES_MAP.has(uid)) {
+    USER_TRADES_MAP.set(uid, []);
+  }
+  return USER_TRADES_MAP.get(uid);
+};
+
+const getUserPortfolio = (userId) => {
+  const uid = String(userId);
+  if (!USER_PORTFOLIO_MAP.has(uid)) {
+    USER_PORTFOLIO_MAP.set(uid, {
+      balance: 100000.00,
+      equity: 100000.00,
+      usedMargin: 0.00,
+      availableMargin: 100000.00,
+      floatingPL: 0.00,
+      realizedPL: 0.00,
+      todayPL: 0.00,
+      totalTrades: 0,
+      winningTrades: 0,
+      losingTrades: 0,
+      winRate: 0.00,
+      equityHistory: [{ timestamp: new Date(), balance: 100000.00, equity: 100000.00 }],
+    });
+  }
+  return USER_PORTFOLIO_MAP.get(uid);
 };
 
 // @desc   Execute virtual paper trading order (BUY / SELL)
 // @route  POST /api/paper-trading/order
-// @access Private
+// @access Private (Requires Auth)
 const placeOrder = async (req, res, next) => {
   try {
-    const userId = req.user?.id || req.user?._id || 'demo_user_id';
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required to place orders.' });
+    }
+
     const { symbol, side, orderType = 'MARKET', lots, stopLoss, takeProfit, strategySetup } = req.body;
 
     if (!symbol || !side || !lots) {
@@ -54,19 +87,27 @@ const placeOrder = async (req, res, next) => {
           data: position,
         });
       } catch (e) {
-        // fallback
+        console.warn('[DB Place Order Notice]:', e.message);
       }
     }
 
-    // In-memory execution
+    // In-memory isolated user execution
     const { getQuoteBySymbol } = require('../services/marketDataService');
-    const quote = getQuoteBySymbol(symbol) || { price: 2385.40, bid: 2385.25, ask: 2385.55, digits: 2 };
+    const quote = getQuoteBySymbol(symbol) || { price: 2385.40, bid: 2385.25, ask: 2385.55, digits: 2, category: 'Metals' };
     const execPrice = side.toUpperCase() === 'BUY' ? quote.ask : quote.bid;
     const units = parseFloat(lots) * (quote.category === 'Forex' ? 100000 : 100);
     const marginReq = Number(((units * execPrice) / 100).toFixed(2));
 
+    const userPortfolio = getUserPortfolio(userId);
+    if (userPortfolio.availableMargin < marginReq) {
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient virtual margin. Required: $${marginReq.toLocaleString()}, Available: $${userPortfolio.availableMargin.toLocaleString()}`,
+      });
+    }
+
     const newPos = {
-      _id: `pos_${Date.now()}`,
+      _id: `pos_${Date.now()}_${Math.random().toString(36).slice(-5)}`,
       userId,
       symbol: symbol.toUpperCase().replace('-', '/'),
       side: side.toUpperCase(),
@@ -84,9 +125,10 @@ const placeOrder = async (req, res, next) => {
       openedAt: new Date(),
     };
 
-    MEMORY_POSITIONS.unshift(newPos);
-    MEMORY_PORTFOLIO.usedMargin = Number((MEMORY_PORTFOLIO.usedMargin + marginReq).toFixed(2));
-    MEMORY_PORTFOLIO.availableMargin = Number((MEMORY_PORTFOLIO.balance - MEMORY_PORTFOLIO.usedMargin).toFixed(2));
+    const userPositions = getUserPositions(userId);
+    userPositions.unshift(newPos);
+    userPortfolio.usedMargin = Number((userPortfolio.usedMargin + marginReq).toFixed(2));
+    userPortfolio.availableMargin = Number((userPortfolio.balance - userPortfolio.usedMargin).toFixed(2));
 
     res.status(201).json({
       success: true,
@@ -98,12 +140,16 @@ const placeOrder = async (req, res, next) => {
   }
 };
 
-// @desc   Get user's open and pending positions
+// @desc   Get authenticated user's open and pending positions
 // @route  GET /api/paper-trading/positions
-// @access Private
+// @access Private (Requires Auth)
 const getPositions = async (req, res, next) => {
   try {
-    const userId = req.user?.id || req.user?._id || 'demo_user_id';
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required to view positions.' });
+    }
+
     let positions = [];
     let pending = [];
 
@@ -112,11 +158,14 @@ const getPositions = async (req, res, next) => {
         positions = await Position.find({ userId, status: 'OPEN' }).sort({ openedAt: -1 });
         pending = await Position.find({ userId, status: 'PENDING' }).sort({ openedAt: -1 });
       } catch (e) {
-        positions = MEMORY_POSITIONS.filter(p => p.status === 'OPEN');
+        const userPos = getUserPositions(userId);
+        positions = userPos.filter(p => p.status === 'OPEN');
+        pending = userPos.filter(p => p.status === 'PENDING');
       }
     } else {
       const { getQuoteBySymbol } = require('../services/marketDataService');
-      MEMORY_POSITIONS.forEach(p => {
+      const userPos = getUserPositions(userId);
+      userPos.forEach(p => {
         if (p.status === 'OPEN') {
           const q = getQuoteBySymbol(p.symbol);
           if (q) {
@@ -127,7 +176,8 @@ const getPositions = async (req, res, next) => {
           }
         }
       });
-      positions = MEMORY_POSITIONS.filter(p => p.status === 'OPEN');
+      positions = userPos.filter(p => p.status === 'OPEN');
+      pending = userPos.filter(p => p.status === 'PENDING');
     }
 
     res.status(200).json({
@@ -141,13 +191,54 @@ const getPositions = async (req, res, next) => {
   }
 };
 
+// @desc   Get authenticated user's pending orders
+// @route  GET /api/paper-trading/pending-orders
+// @access Private (Requires Auth)
+const getPendingOrders = async (req, res, next) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required to view pending orders.' });
+    }
+
+    let pending = [];
+    if (isDbConnected()) {
+      try {
+        pending = await Position.find({ userId, status: 'PENDING' }).sort({ openedAt: -1 });
+      } catch (e) {
+        const userPos = getUserPositions(userId);
+        pending = userPos.filter(p => p.status === 'PENDING');
+      }
+    } else {
+      const userPos = getUserPositions(userId);
+      pending = userPos.filter(p => p.status === 'PENDING');
+    }
+
+    res.status(200).json({
+      success: true,
+      count: pending.length,
+      data: pending,
+      pending,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // @desc   Close an active open position manually
 // @route  POST /api/paper-trading/close
-// @access Private
+// @access Private (Requires Auth)
 const closeOpenPosition = async (req, res, next) => {
   try {
-    const userId = req.user?.id || req.user?._id || 'demo_user_id';
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required to close positions.' });
+    }
+
     const { positionId } = req.body;
+    if (!positionId) {
+      return res.status(400).json({ success: false, message: 'positionId is required.' });
+    }
 
     if (isDbConnected()) {
       try {
@@ -158,13 +249,14 @@ const closeOpenPosition = async (req, res, next) => {
           data: result,
         });
       } catch (e) {
-        // fallback
+        console.warn('[DB Close Position Notice]:', e.message);
       }
     }
 
-    const pos = MEMORY_POSITIONS.find(p => p._id === positionId && p.status === 'OPEN');
+    const userPos = getUserPositions(userId);
+    const pos = userPos.find(p => p._id === positionId && p.status === 'OPEN');
     if (!pos) {
-      return res.status(404).json({ success: false, message: 'Position not found' });
+      return res.status(404).json({ success: false, message: 'Position not found or unauthorized' });
     }
 
     pos.status = 'CLOSED';
@@ -189,7 +281,7 @@ const closeOpenPosition = async (req, res, next) => {
       riskRewardRatio = Number((plannedReward / plannedRisk).toFixed(2));
     }
 
-    const tradeId = `trade_${Date.now()}`;
+    const tradeId = `trade_${Date.now()}_${Math.random().toString(36).slice(-5)}`;
     const trade = {
       _id: tradeId,
       tradeId,
@@ -216,40 +308,47 @@ const closeOpenPosition = async (req, res, next) => {
       strategySetup: 'Price Action & Key Levels',
     };
 
-    MEMORY_TRADES.unshift(trade);
-    MEMORY_PORTFOLIO.balance = Number((MEMORY_PORTFOLIO.balance + realizedPL).toFixed(2));
-    MEMORY_PORTFOLIO.equity = MEMORY_PORTFOLIO.balance;
-    MEMORY_PORTFOLIO.usedMargin = Math.max(0, Number((MEMORY_PORTFOLIO.usedMargin - pos.marginRequired).toFixed(2)));
-    MEMORY_PORTFOLIO.availableMargin = Number((MEMORY_PORTFOLIO.balance - MEMORY_PORTFOLIO.usedMargin).toFixed(2));
-    MEMORY_PORTFOLIO.realizedPL = Number((MEMORY_PORTFOLIO.realizedPL + realizedPL).toFixed(2));
-    MEMORY_PORTFOLIO.todayPL = Number((MEMORY_PORTFOLIO.todayPL + realizedPL).toFixed(2));
-    MEMORY_PORTFOLIO.totalTrades += 1;
-    if (result === 'WIN') MEMORY_PORTFOLIO.winningTrades += 1;
-    if (result === 'LOSS') MEMORY_PORTFOLIO.losingTrades += 1;
-    MEMORY_PORTFOLIO.winRate = Number(((MEMORY_PORTFOLIO.winningTrades / MEMORY_PORTFOLIO.totalTrades) * 100).toFixed(1));
+    const userTrades = getUserTrades(userId);
+    userTrades.unshift(trade);
 
-    MEMORY_PORTFOLIO.equityHistory.push({
+    const userPortfolio = getUserPortfolio(userId);
+    userPortfolio.balance = Number((userPortfolio.balance + realizedPL).toFixed(2));
+    userPortfolio.equity = userPortfolio.balance;
+    userPortfolio.usedMargin = Math.max(0, Number((userPortfolio.usedMargin - pos.marginRequired).toFixed(2)));
+    userPortfolio.availableMargin = Number((userPortfolio.balance - userPortfolio.usedMargin).toFixed(2));
+    userPortfolio.realizedPL = Number((userPortfolio.realizedPL + realizedPL).toFixed(2));
+    userPortfolio.todayPL = Number((userPortfolio.todayPL + realizedPL).toFixed(2));
+    userPortfolio.totalTrades += 1;
+    if (result === 'WIN') userPortfolio.winningTrades += 1;
+    if (result === 'LOSS') userPortfolio.losingTrades += 1;
+    userPortfolio.winRate = Number(((userPortfolio.winningTrades / userPortfolio.totalTrades) * 100).toFixed(1));
+
+    userPortfolio.equityHistory.push({
       timestamp: new Date(),
-      balance: MEMORY_PORTFOLIO.balance,
-      equity: MEMORY_PORTFOLIO.equity,
+      balance: userPortfolio.balance,
+      equity: userPortfolio.equity,
     });
 
     res.status(200).json({
       success: true,
       message: `Position closed. Realized P/L: $${realizedPL.toLocaleString()}`,
-      data: { trade, portfolio: MEMORY_PORTFOLIO },
+      data: { trade, portfolio: userPortfolio },
     });
   } catch (err) {
     next(err);
   }
 };
 
-// @desc   Modify Stop Loss and Take Profit
+// @desc   Modify Stop Loss and Take Profit for authenticated user's position
 // @route  PUT /api/paper-trading/position/:id
-// @access Private
+// @access Private (Requires Auth)
 const updatePositionLimits = async (req, res, next) => {
   try {
-    const userId = req.user?.id || req.user?._id || 'demo_user_id';
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required to update limits.' });
+    }
+
     const { stopLoss, takeProfit } = req.body;
     const parsedSL = stopLoss !== undefined && stopLoss !== '' && stopLoss !== null ? parseFloat(stopLoss) : null;
     const parsedTP = takeProfit !== undefined && takeProfit !== '' && takeProfit !== null ? parseFloat(takeProfit) : null;
@@ -269,32 +368,39 @@ const updatePositionLimits = async (req, res, next) => {
       }
     }
 
-    const pos = MEMORY_POSITIONS.find(p => p._id === req.params.id);
+    const userPos = getUserPositions(userId);
+    const pos = userPos.find(p => p._id === req.params.id && p.userId === userId);
     if (pos) {
       pos.stopLoss = parsedSL;
       pos.takeProfit = parsedTP;
       return res.status(200).json({ success: true, message: 'Position limits updated successfully', data: pos });
     }
 
-    res.status(404).json({ success: false, message: 'Position not found' });
+    res.status(404).json({ success: false, message: 'Position not found or unauthorized' });
   } catch (err) {
     next(err);
   }
 };
 
-// @desc   Get trade history
+// @desc   Get authenticated user's trade history
 // @route  GET /api/paper-trading/history
-// @access Private
+// @access Private (Requires Auth)
 const getTradeHistory = async (req, res, next) => {
   try {
-    const userId = req.user?.id || req.user?._id || 'demo_user_id';
-    let trades = MEMORY_TRADES;
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required to view history.' });
+    }
+
+    let trades = [];
     if (isDbConnected()) {
       try {
         trades = await Trade.find({ userId }).sort({ closedAt: -1 }).limit(100);
       } catch (e) {
-        trades = MEMORY_TRADES;
+        trades = getUserTrades(userId);
       }
+    } else {
+      trades = getUserTrades(userId);
     }
     res.status(200).json({ success: true, count: trades.length, data: trades });
   } catch (err) {
@@ -302,14 +408,17 @@ const getTradeHistory = async (req, res, next) => {
   }
 };
 
-// @desc   Reset virtual demo balance
+// @desc   Reset authenticated user's virtual balance
 // @route  POST /api/paper-trading/reset
-// @access Private
+// @access Private (Requires Auth)
 const resetAccount = async (req, res, next) => {
   try {
-    const userId = req.user?.id || req.user?._id;
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required to reset account.' });
+    }
 
-    if (isDbConnected() && userId) {
+    if (isDbConnected()) {
       try {
         await Position.updateMany({ userId, status: 'OPEN' }, { status: 'CLOSED' });
         await Portfolio.findOneAndUpdate(
@@ -335,9 +444,9 @@ const resetAccount = async (req, res, next) => {
       }
     }
 
-    MEMORY_POSITIONS = [];
-    MEMORY_TRADES = [];
-    MEMORY_PORTFOLIO = {
+    USER_POSITIONS_MAP.set(String(userId), []);
+    USER_TRADES_MAP.set(String(userId), []);
+    const resetPort = {
       balance: 100000.00,
       equity: 100000.00,
       usedMargin: 0.00,
@@ -351,7 +460,9 @@ const resetAccount = async (req, res, next) => {
       winRate: 0.00,
       equityHistory: [{ timestamp: new Date(), balance: 100000.00, equity: 100000.00 }],
     };
-    res.status(200).json({ success: true, message: 'Virtual account reset to $100,000.00', portfolio: MEMORY_PORTFOLIO });
+    USER_PORTFOLIO_MAP.set(String(userId), resetPort);
+
+    res.status(200).json({ success: true, message: 'Virtual account reset to $100,000.00', portfolio: resetPort });
   } catch (err) {
     next(err);
   }
@@ -360,11 +471,12 @@ const resetAccount = async (req, res, next) => {
 module.exports = {
   placeOrder,
   getPositions,
+  getPendingOrders,
   closeOpenPosition,
   updatePositionLimits,
   getTradeHistory,
   resetAccount,
-  MEMORY_PORTFOLIO,
-  MEMORY_POSITIONS,
-  MEMORY_TRADES,
+  getUserPortfolio,
+  getUserPositions,
+  getUserTrades,
 };

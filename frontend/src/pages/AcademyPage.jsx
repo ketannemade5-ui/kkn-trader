@@ -21,11 +21,25 @@ import {
 } from 'lucide-react';
 
 export const AcademyPage = () => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterDifficulty, setFilterDifficulty] = useState('All');
+  // Restore search/filter state from sessionStorage for seamless tab switching
+  const [searchQuery, setSearchQuery] = useState(() => {
+    try { return sessionStorage.getItem('kkn_academy_search') || ''; } catch { return ''; }
+  });
+  const [filterDifficulty, setFilterDifficulty] = useState(() => {
+    try { return sessionStorage.getItem('kkn_academy_filter') || 'All'; } catch { return 'All'; }
+  });
   const [completedSlugs, setCompletedSlugs] = useState([]);
   const [overallProgress, setOverallProgress] = useState(0);
   const [lastOpened, setLastOpened] = useState(null);
+
+  // Persist search/filter state whenever they change
+  useEffect(() => {
+    try { sessionStorage.setItem('kkn_academy_search', searchQuery); } catch {}
+  }, [searchQuery]);
+
+  useEffect(() => {
+    try { sessionStorage.setItem('kkn_academy_filter', filterDifficulty); } catch {}
+  }, [filterDifficulty]);
 
   useEffect(() => {
     const completed = getCompletedLessons();

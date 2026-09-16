@@ -5,36 +5,27 @@ import { useToast } from './ToastContext';
 
 const PaperTradingContext = createContext(null);
 
-const getStorageKey = (userId) => `kkn_trade_history_${userId || 'guest'}`;
+const getStorageKey = (userId) => `kkn_trade_history_${userId}`;
 
 const loadCachedTrades = (userId) => {
+  if (!userId || userId === 'guest') return [];
   try {
     const key = getStorageKey(userId);
     const raw = localStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
-    const legacy = localStorage.getItem('kkn_trade_history');
-    if (legacy) {
-      const parsed = JSON.parse(legacy);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch (e) {
-    // ignore
-  }
+  } catch (e) {}
   return [];
 };
 
 const persistTrades = (userId, trades) => {
+  if (!userId || userId === 'guest' || !Array.isArray(trades)) return;
   try {
-    if (!Array.isArray(trades)) return;
     const key = getStorageKey(userId);
     localStorage.setItem(key, JSON.stringify(trades));
-    localStorage.setItem('kkn_trade_history', JSON.stringify(trades));
-  } catch (e) {
-    // ignore
-  }
+  } catch (e) {}
 };
 
 const mergeTradeLists = (existingList = [], incomingList = []) => {
@@ -54,40 +45,49 @@ const mergeTradeLists = (existingList = [], incomingList = []) => {
   return merged;
 };
 
+const DEFAULT_PORTFOLIO = {
+  balance: 100000.00,
+  equity: 100000.00,
+  usedMargin: 0.00,
+  availableMargin: 100000.00,
+  floatingPL: 0.00,
+  realizedPL: 0.00,
+  todayPL: 0.00,
+  winRate: 0.00,
+  totalTrades: 0,
+  winningTrades: 0,
+  losingTrades: 0,
+};
+
 export const PaperTradingProvider = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
-  const userId = user?.id || user?._id || 'guest';
+  const userId = isAuthenticated && user ? (user.id || user._id || user.uid) : null;
 
   const [positions, setPositions] = useState([]);
   const [pendingOrders, setPendingOrders] = useState([]);
-  const [tradeHistory, setTradeHistory] = useState(() => loadCachedTrades(userId));
-  const [portfolio, setPortfolio] = useState({
-    balance: 100000.00,
-    equity: 100000.00,
-    usedMargin: 0.00,
-    availableMargin: 100000.00,
-    floatingPL: 0.00,
-    realizedPL: 0.00,
-    todayPL: 0.00,
-    winRate: 0.00,
-    totalTrades: 0,
-    winningTrades: 0,
-    losingTrades: 0,
-  });
+  const [tradeHistory, setTradeHistory] = useState(() => (userId ? loadCachedTrades(userId) : []));
+  const [portfolio, setPortfolio] = useState(DEFAULT_PORTFOLIO);
   const [loading, setLoading] = useState(false);
 
   const { success, error, info } = useToast();
 
-  // Load user-specific cached trades on auth state change
+  // Reset or load user-specific paper trading state on auth changes
   useEffect(() => {
-    const cached = loadCachedTrades(userId);
-    if (cached.length > 0) {
-      setTradeHistory((prev) => mergeTradeLists(prev, cached));
+    if (!isAuthenticated || !userId) {
+      setPositions([]);
+      setPendingOrders([]);
+      setTradeHistory([]);
+      setPortfolio(DEFAULT_PORTFOLIO);
+      return;
     }
-  }, [userId]);
+
+    const cached = loadCachedTrades(userId);
+    setTradeHistory(cached);
+  }, [isAuthenticated, userId]);
 
   const fetchPaperData = useCallback(async () => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !userId) return;
+
     try {
       const [posRes, portRes, histRes] = await Promise.allSettled([
         paperTradingAPI.getPositions(),
@@ -113,18 +113,21 @@ export const PaperTradingProvider = ({ children }) => {
         });
       }
     } catch (err) {
-      console.warn('Paper trading fetch notice:', err.message);
+      console.warn('[Paper Trading Sync Notice]:', err.message);
     }
   }, [isAuthenticated, userId]);
 
+  // Periodic polling only for authenticated users
   useEffect(() => {
+    if (!isAuthenticated || !userId) return;
+
     fetchPaperData();
-    const interval = setInterval(fetchPaperData, 1500);
+    const interval = setInterval(fetchPaperData, 2000);
     return () => clearInterval(interval);
-  }, [fetchPaperData]);
+  }, [fetchPaperData, isAuthenticated, userId]);
 
   const placeOrder = async (orderData) => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !userId) {
       error('Please sign in or create a free account to execute trades.');
       return { success: false };
     }
@@ -146,6 +149,11 @@ export const PaperTradingProvider = ({ children }) => {
   };
 
   const closePosition = async (positionId) => {
+    if (!isAuthenticated || !userId) {
+      error('Authentication required.');
+      return { success: false };
+    }
+
     try {
       const res = await paperTradingAPI.closePosition(positionId);
       if (res.success) {
@@ -173,6 +181,11 @@ export const PaperTradingProvider = ({ children }) => {
   };
 
   const updateLimits = async (id, limits) => {
+    if (!isAuthenticated || !userId) {
+      error('Authentication required.');
+      return { success: false };
+    }
+
     try {
       const res = await paperTradingAPI.updateLimits(id, limits);
       if (res.success) {
@@ -187,10 +200,21 @@ export const PaperTradingProvider = ({ children }) => {
   };
 
   const resetAccount = async () => {
+    if (!isAuthenticated || !userId) {
+      error('Authentication required.');
+      return { success: false };
+    }
+
     try {
       const res = await paperTradingAPI.resetAccount();
       if (res.success) {
         success('Virtual Account balance reset to $100,000.00.');
+        setPositions([]);
+        setPendingOrders([]);
+        setTradeHistory([]);
+        try {
+          localStorage.removeItem(getStorageKey(userId));
+        } catch (e) {}
         await fetchPaperData();
         return { success: true };
       }
@@ -221,4 +245,3 @@ export const PaperTradingProvider = ({ children }) => {
 };
 
 export const usePaperTrading = () => useContext(PaperTradingContext);
-

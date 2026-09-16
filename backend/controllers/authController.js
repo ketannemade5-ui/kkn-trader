@@ -287,6 +287,9 @@ const firebaseAuthSync = async (req, res, next) => {
     let user = null;
     let isNewUser = false;
 
+    const activeUserId = uid || (user ? user._id.toString() : (storedUser?._id || `user_fb_${Date.now()}`));
+    const token = generateToken(activeUserId);
+
     // 1. Check MongoDB
     if (isDbConnected()) {
       try {
@@ -306,7 +309,7 @@ const firebaseAuthSync = async (req, res, next) => {
           });
 
           await Portfolio.create({
-            userId: user._id,
+            userId: activeUserId,
             initialBalance: 100000.00,
             virtualBalance: 100000.00,
             equity: 100000.00,
@@ -315,9 +318,12 @@ const firebaseAuthSync = async (req, res, next) => {
           });
 
           await Watchlist.create({
-            userId: user._id,
+            userId: activeUserId,
             symbols: ['XAU/USD', 'EUR/USD', 'GBP/USD', 'BTC/USD', 'NASDAQ', 'US30'],
           });
+        } else if (name && name.trim() && user.name !== name.trim()) {
+          user.name = name.trim();
+          await user.save();
         }
       } catch (e) {
         console.warn('[Firebase Sync] DB lookup/creation notice:', e.message);
@@ -339,10 +345,9 @@ const firebaseAuthSync = async (req, res, next) => {
       } catch (e) {
         // ignore
       }
+    } else if (storedUser && name && name.trim()) {
+      storedUser = userStore.updateUser(storedUser._id || storedUser.id, { name: name.trim() });
     }
-
-    const activeUserId = user ? user._id.toString() : (storedUser?._id || `user_fb_${uid || Date.now()}`);
-    const token = generateToken(activeUserId);
 
     // Retrieve portfolio if MongoDB connected
     let portfolioData = {
@@ -350,9 +355,12 @@ const firebaseAuthSync = async (req, res, next) => {
       equity: 100000.00,
       availableMargin: 100000.00,
     };
-    if (isDbConnected() && user) {
+    if (isDbConnected()) {
       try {
-        const p = await Portfolio.findOne({ userId: user._id });
+        let p = await Portfolio.findOne({ userId: activeUserId });
+        if (!p && user) {
+          p = await Portfolio.findOne({ userId: user._id });
+        }
         if (p) {
           portfolioData = {
             virtualBalance: p.virtualBalance,

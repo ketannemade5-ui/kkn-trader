@@ -10,6 +10,7 @@ import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 import { MarketTicker } from './components/layout/MarketTicker';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
+import { ScrollRestoration } from './components/layout/ScrollRestoration';
 
 // Pages
 import { HomePage } from './pages/HomePage';
@@ -44,6 +45,7 @@ export const App = () => {
       <AuthProvider>
         <MarketProvider>
           <PaperTradingProvider>
+            <ScrollRestoration />
             <div className="flex flex-col min-h-screen bg-kkn-bg text-kkn-text-primary">
               <MarketTicker />
               <Navbar />
@@ -68,10 +70,24 @@ export const App = () => {
                   <Route path="/courses/:courseSlug" element={<CourseDetailPage />} />
                   <Route path="/courses/:courseSlug/:lessonSlug" element={<LessonPage />} />
 
-                  {/* Live Markets & Paper Trading */}
+                  {/* Live Markets */}
                   <Route path="/markets" element={<MarketsPage />} />
-                  <Route path="/trade" element={<PaperTradingPage />} />
-                  <Route path="/papertrading" element={<PaperTradingPage />} />
+                  <Route
+                    path="/trade"
+                    element={
+                      <ProtectedRoute>
+                        <PaperTradingPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/papertrading"
+                    element={
+                      <ProtectedRoute>
+                        <PaperTradingPage />
+                      </ProtectedRoute>
+                    }
+                  />
                   <Route path="/tools" element={<ToolsPage />} />
                   <Route path="/ai" element={<KKNAIPage />} />
                   <Route path="/roadmap" element={<RoadmapPage />} />

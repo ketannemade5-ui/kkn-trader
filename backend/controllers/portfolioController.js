@@ -1,17 +1,20 @@
 const Portfolio = require('../models/Portfolio');
 const Position = require('../models/Position');
 const Trade = require('../models/Trade');
-const { MEMORY_PORTFOLIO, MEMORY_POSITIONS, MEMORY_TRADES } = require('./paperTradingController');
+const { getUserPortfolio, getUserPositions, getUserTrades } = require('./paperTradingController');
 const mongoose = require('mongoose');
 
 const isDbConnected = () => mongoose.connection.readyState === 1;
 
-// @desc   Get comprehensive portfolio summary & analytics
+// @desc   Get comprehensive portfolio summary & analytics for authenticated user
 // @route  GET /api/portfolio/summary
-// @access Private
+// @access Private (Requires Auth)
 const getPortfolioSummary = async (req, res, next) => {
   try {
-    const userId = req.user?.id || req.user?._id || 'demo_user_id';
+    const userId = req.user?.uid || req.user?.id || req.user?._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required to view portfolio.' });
+    }
 
     if (isDbConnected()) {
       try {
@@ -80,39 +83,49 @@ const getPortfolioSummary = async (req, res, next) => {
           },
         });
       } catch (e) {
-        // fallback
+        console.warn('[DB Portfolio Summary Notice]:', e.message);
       }
     }
 
-    // In-Memory Mode
-    const openPos = MEMORY_POSITIONS.filter(p => p.status === 'OPEN');
+    // In-Memory Mode (strictly isolated to requested userId)
+    const memPortfolio = getUserPortfolio(userId);
+    const userPositions = getUserPositions(userId);
+    const userTrades = getUserTrades(userId);
+
+    const openPos = userPositions.filter(p => p.status === 'OPEN');
     const floatPL = openPos.reduce((sum, p) => sum + (p.unrealizedPL || 0), 0);
-    const curEquity = Number((MEMORY_PORTFOLIO.balance + floatPL).toFixed(2));
-    const curAvailMargin = Math.max(0, Number((curEquity - MEMORY_PORTFOLIO.usedMargin).toFixed(2)));
+    const curEquity = Number((memPortfolio.balance + floatPL).toFixed(2));
+    const curAvailMargin = Math.max(0, Number((curEquity - memPortfolio.usedMargin).toFixed(2)));
+
+    const winning = userTrades.filter(t => t.result === 'WIN');
+    const losing = userTrades.filter(t => t.result === 'LOSS');
+    const totalWinAmt = winning.reduce((sum, t) => sum + (t.realizedPL || 0), 0);
+    const totalLossAmt = losing.reduce((sum, t) => sum + Math.abs(t.realizedPL || 0), 0);
+    const winRateVal = userTrades.length > 0 ? Number(((winning.length / userTrades.length) * 100).toFixed(1)) : 0;
 
     res.status(200).json({
       success: true,
       data: {
-        balance: MEMORY_PORTFOLIO.balance,
+        balance: memPortfolio.balance,
         equity: curEquity,
-        usedMargin: MEMORY_PORTFOLIO.usedMargin,
+        usedMargin: memPortfolio.usedMargin,
         availableMargin: curAvailMargin,
         floatingPL: Number(floatPL.toFixed(2)),
-        realizedPL: MEMORY_PORTFOLIO.realizedPL,
-        todayPL: MEMORY_PORTFOLIO.todayPL,
-        totalTrades: MEMORY_PORTFOLIO.totalTrades,
-        winningTrades: MEMORY_PORTFOLIO.winningTrades,
-        losingTrades: MEMORY_PORTFOLIO.losingTrades,
-        winRate: MEMORY_PORTFOLIO.winRate,
-        profitFactor: 2.45,
-        expectancy: 125.00,
-        avgWin: 240.00,
-        avgLoss: 100.00,
-        avgRR: 2.4,
-        largestWin: 380.00,
-        largestLoss: -100.00,
-        maxDrawdownPercent: 1.2,
-        equityHistory: MEMORY_PORTFOLIO.equityHistory,
+        realizedPL: memPortfolio.realizedPL,
+        todayPL: memPortfolio.todayPL,
+        totalTrades: userTrades.length,
+        winningTrades: winning.length,
+        losingTrades: losing.length,
+        winRate: winRateVal,
+        profitFactor: totalLossAmt > 0 ? Number((totalWinAmt / totalLossAmt).toFixed(2)) : totalWinAmt > 0 ? 99.0 : 0,
+        expectancy: 0,
+        avgWin: winning.length > 0 ? Number((totalWinAmt / winning.length).toFixed(2)) : 0,
+        avgLoss: losing.length > 0 ? Number((totalLossAmt / losing.length).toFixed(2)) : 0,
+        avgRR: userTrades.length > 0 ? Number((userTrades.reduce((sum, t) => sum + (t.riskRewardAchieved || 0), 0) / userTrades.length).toFixed(2)) : 0,
+        largestWin: 0,
+        largestLoss: 0,
+        maxDrawdownPercent: 0,
+        equityHistory: memPortfolio.equityHistory,
       },
     });
   } catch (err) {

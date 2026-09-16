@@ -48,6 +48,39 @@ export const LessonPage = () => {
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [quizScore, setQuizScore] = useState(0);
 
+  // --- Quiz progress persistence helpers ---
+  const getQuizStorageKey = (slug) => `kkn_quiz_progress_${slug}`;
+
+  const saveQuizProgress = (slug, answers, submitted, score) => {
+    try {
+      sessionStorage.setItem(
+        getQuizStorageKey(slug),
+        JSON.stringify({ answers, submitted, score })
+      );
+    } catch (e) { /* ignore quota errors */ }
+  };
+
+  const loadQuizProgress = (slug) => {
+    try {
+      const raw = sessionStorage.getItem(getQuizStorageKey(slug));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return {
+          answers: parsed.answers || {},
+          submitted: !!parsed.submitted,
+          score: parsed.score || 0,
+        };
+      }
+    } catch (e) { /* ignore parse errors */ }
+    return null;
+  };
+
+  const clearQuizProgress = (slug) => {
+    try {
+      sessionStorage.removeItem(getQuizStorageKey(slug));
+    } catch (e) { /* ignore */ }
+  };
+
   useEffect(() => {
     setLoading(true);
     // Fetch lesson data from comprehensive database
@@ -57,10 +90,19 @@ export const LessonPage = () => {
       setCompleted(isLessonCompleted(activeLessonSlug));
       saveLastOpenedLesson(lessonData.levelId, activeLessonSlug);
     }
-    // Reset quiz state on lesson change
-    setSelectedAnswers({});
-    setQuizSubmitted(false);
-    setQuizScore(0);
+
+    // Restore saved quiz progress for this lesson, or reset if none exists
+    const savedQuiz = loadQuizProgress(activeLessonSlug);
+    if (savedQuiz) {
+      setSelectedAnswers(savedQuiz.answers);
+      setQuizSubmitted(savedQuiz.submitted);
+      setQuizScore(savedQuiz.score);
+    } else {
+      setSelectedAnswers({});
+      setQuizSubmitted(false);
+      setQuizScore(0);
+    }
+
     setLoading(false);
   }, [activeLessonSlug, levelId, courseSlug]);
 
@@ -80,7 +122,11 @@ export const LessonPage = () => {
 
   const handleSelectOption = (qIdx, optIdx) => {
     if (quizSubmitted) return;
-    setSelectedAnswers((prev) => ({ ...prev, [qIdx]: optIdx }));
+    setSelectedAnswers((prev) => {
+      const updated = { ...prev, [qIdx]: optIdx };
+      saveQuizProgress(activeLessonSlug, updated, false, 0);
+      return updated;
+    });
   };
 
   const handleSubmitQuiz = () => {
@@ -93,6 +139,7 @@ export const LessonPage = () => {
     });
     setQuizScore(score);
     setQuizSubmitted(true);
+    saveQuizProgress(activeLessonSlug, selectedAnswers, true, score);
     saveQuizScore(lesson.levelId, score, lesson.quiz.length);
 
     if (score >= 3) {
@@ -108,6 +155,7 @@ export const LessonPage = () => {
     setSelectedAnswers({});
     setQuizSubmitted(false);
     setQuizScore(0);
+    clearQuizProgress(activeLessonSlug);
   };
 
   if (loading) {

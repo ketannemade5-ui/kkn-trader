@@ -3,47 +3,28 @@ const mongoose = require('mongoose');
 
 const isDbConnected = () => mongoose.connection.readyState === 1;
 
-let MEMORY_JOURNAL = [
-  {
-    _id: 'journal_1',
-    symbol: 'XAU/USD',
-    side: 'BUY',
-    entryPrice: 2380.00,
-    exitPrice: 2394.50,
-    lots: 1.0,
-    realizedPL: 1450.00,
-    result: 'WIN',
-    strategySetup: 'Liquidity Sweep + 15m Bullish FVG',
-    tradeReason: 'Asian low swept with strong displacement candle closing above previous 15m high (CHoCH).',
-    emotion: 'Calm & Disciplined',
-    mistake: 'None - Followed Rules',
-    lessonLearned: 'Patience for liquidity pool sweep produces highest R:R setups.',
-    date: new Date(),
-  },
-  {
-    _id: 'journal_2',
-    symbol: 'EUR/USD',
-    side: 'BUY',
-    entryPrice: 1.0840,
-    exitPrice: 1.0880,
-    lots: 0.5,
-    realizedPL: 200.00,
-    result: 'WIN',
-    strategySetup: 'London Killzone Order Block Retest',
-    tradeReason: 'Price retested fresh 1-hour bullish order block during London open volume expansion.',
-    emotion: 'Confident',
-    mistake: 'None - Followed Rules',
-    lessonLearned: 'Aligning with London session killzone timing creates immediate momentum.',
-    date: new Date(Date.now() - 86400000),
-  }
-];
+const getUserId = (req) => req.user?.uid || req.user?.id || req.user?._id;
 
-// @desc   Get user's trade journal entries with optional filters
+const USER_JOURNAL_MAP = new Map();
+
+const getUserJournal = (userId) => {
+  const uid = String(userId);
+  if (!USER_JOURNAL_MAP.has(uid)) {
+    USER_JOURNAL_MAP.set(uid, []);
+  }
+  return USER_JOURNAL_MAP.get(uid);
+};
+
+// @desc   Get authenticated user's trade journal entries with optional filters
 // @route  GET /api/journal
-// @access Private
+// @access Private (Requires Auth)
 const getJournalEntries = async (req, res, next) => {
   try {
-    const userId = req.user?.id || req.user?._id;
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required to view journal.' });
+    }
+
     const { symbol, result, emotion, setup } = req.query;
 
     if (isDbConnected()) {
@@ -61,7 +42,8 @@ const getJournalEntries = async (req, res, next) => {
       }
     }
 
-    let filtered = [...MEMORY_JOURNAL];
+    const userJournal = getUserJournal(userId);
+    let filtered = [...userJournal];
     if (symbol) filtered = filtered.filter(e => e.symbol.toUpperCase() === symbol.toUpperCase());
     if (result && result !== 'All') filtered = filtered.filter(e => e.result.toUpperCase() === result.toUpperCase());
 
@@ -75,12 +57,16 @@ const getJournalEntries = async (req, res, next) => {
   }
 };
 
-// @desc   Create manual journal entry or note
+// @desc   Create manual journal entry for authenticated user
 // @route  POST /api/journal
-// @access Private
+// @access Private (Requires Auth)
 const createJournalEntry = async (req, res, next) => {
   try {
-    const userId = req.user?.id || req.user?._id || 'demo_user_id';
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required to create journal entry.' });
+    }
+
     const {
       symbol,
       side,
@@ -100,7 +86,7 @@ const createJournalEntry = async (req, res, next) => {
     const calculatedResult = result || (calculatedPL > 0 ? 'WIN' : calculatedPL < 0 ? 'LOSS' : 'BREAKEVEN');
 
     const newEntry = {
-      _id: `journal_${Date.now()}`,
+      _id: `journal_${Date.now()}_${Math.random().toString(36).slice(-5)}`,
       userId,
       symbol: symbol ? symbol.toUpperCase() : 'XAU/USD',
       side: side ? side.toUpperCase() : 'BUY',
@@ -125,7 +111,8 @@ const createJournalEntry = async (req, res, next) => {
       }
     }
 
-    MEMORY_JOURNAL.unshift(newEntry);
+    const userJournal = getUserJournal(userId);
+    userJournal.unshift(newEntry);
 
     res.status(201).json({
       success: true,
@@ -137,27 +124,62 @@ const createJournalEntry = async (req, res, next) => {
   }
 };
 
-// @desc   Update trade journal entry
+// @desc   Update trade journal entry for authenticated user
 // @route  PUT /api/journal/:id
-// @access Private
+// @access Private (Requires Auth)
 const updateJournalEntry = async (req, res, next) => {
   try {
-    const entry = MEMORY_JOURNAL.find(e => e._id === req.params.id);
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required to update journal entry.' });
+    }
+
+    if (isDbConnected()) {
+      try {
+        const updated = await JournalEntry.findOneAndUpdate(
+          { _id: req.params.id, userId },
+          req.body,
+          { new: true }
+        );
+        if (updated) {
+          return res.status(200).json({ success: true, message: 'Journal entry updated', data: updated });
+        }
+      } catch (e) {}
+    }
+
+    const userJournal = getUserJournal(userId);
+    const entry = userJournal.find(e => e._id === req.params.id && e.userId === userId);
     if (entry) {
       Object.assign(entry, req.body);
+      return res.status(200).json({ success: true, message: 'Journal entry updated', data: entry });
     }
-    res.status(200).json({ success: true, message: 'Journal entry updated', data: entry });
+
+    res.status(404).json({ success: false, message: 'Journal entry not found' });
   } catch (err) {
     next(err);
   }
 };
 
-// @desc   Delete journal entry
+// @desc   Delete authenticated user's journal entry
 // @route  DELETE /api/journal/:id
-// @access Private
+// @access Private (Requires Auth)
 const deleteJournalEntry = async (req, res, next) => {
   try {
-    MEMORY_JOURNAL = MEMORY_JOURNAL.filter(e => e._id !== req.params.id);
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required to delete journal entry.' });
+    }
+
+    if (isDbConnected()) {
+      try {
+        await JournalEntry.findOneAndDelete({ _id: req.params.id, userId });
+      } catch (e) {}
+    }
+
+    const userJournal = getUserJournal(userId);
+    const filtered = userJournal.filter(e => e._id !== req.params.id);
+    USER_JOURNAL_MAP.set(String(userId), filtered);
+
     res.status(200).json({ success: true, message: 'Entry deleted' });
   } catch (err) {
     next(err);

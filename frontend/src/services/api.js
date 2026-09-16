@@ -12,24 +12,28 @@ const API = axios.create({
   },
 });
 
-// Request interceptor to append Firebase ID token or stored JWT token
+// Request interceptor to append fresh Firebase ID token or stored token
 API.interceptors.request.use(
   async (config) => {
     try {
-      const user = auth.currentUser;
-      if (user) {
-        const token = await user.getIdToken();
-        config.headers.Authorization = `Bearer ${token}`;
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        // Fetch the latest valid Firebase ID token (auto-refreshes if expired)
+        const idToken = await currentUser.getIdToken();
+        config.headers.Authorization = `Bearer ${idToken}`;
+        try {
+          localStorage.setItem('kkn_token', idToken);
+        } catch (e) {}
       } else {
-        const token = localStorage.getItem('kkn_token');
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
+        const storedToken = localStorage.getItem('kkn_token');
+        if (storedToken) {
+          config.headers.Authorization = `Bearer ${storedToken}`;
         }
       }
     } catch (err) {
-      const token = localStorage.getItem('kkn_token');
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+      const storedToken = localStorage.getItem('kkn_token');
+      if (storedToken) {
+        config.headers.Authorization = `Bearer ${storedToken}`;
       }
     }
     return config;
@@ -43,8 +47,10 @@ API.interceptors.response.use(
   (error) => {
     const message = error.response?.data?.message || error.message || 'An unexpected error occurred';
     if (error.response?.status === 401) {
-      // Don't auto-redirect on login or register endpoints
-      if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/register')) {
+      // Avoid clearing local session if on login, register, or initial load where Firebase is initializing
+      const isAuthPage = typeof window !== 'undefined' && 
+        (window.location.pathname.includes('/login') || window.location.pathname.includes('/register'));
+      if (!isAuthPage && !auth.currentUser) {
         localStorage.removeItem('kkn_token');
         localStorage.removeItem('kkn_user');
       }
@@ -89,6 +95,7 @@ export const marketAPI = {
 export const paperTradingAPI = {
   placeOrder: (data) => API.post('/paper-trading/order', data),
   getPositions: () => API.get('/paper-trading/positions'),
+  getPendingOrders: () => API.get('/paper-trading/pending-orders'),
   closePosition: (positionId) => API.post('/paper-trading/close', { positionId }),
   updateLimits: (id, limits) => API.put(`/paper-trading/position/${id}`, limits),
   getHistory: () => API.get('/paper-trading/history'),

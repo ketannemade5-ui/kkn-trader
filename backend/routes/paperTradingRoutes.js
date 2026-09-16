@@ -3,6 +3,7 @@ const router = express.Router();
 const {
   placeOrder,
   getPositions,
+  getPendingOrders,
   closeOpenPosition,
   updatePositionLimits,
   getTradeHistory,
@@ -14,6 +15,8 @@ router.use(protect);
 
 router.post('/order', placeOrder);
 router.get('/positions', getPositions);
+router.get('/pending-orders', getPendingOrders);
+router.get('/pending', getPendingOrders);
 router.post('/close', closeOpenPosition);
 router.put('/position/:id', updatePositionLimits);
 router.get('/history', getTradeHistory);

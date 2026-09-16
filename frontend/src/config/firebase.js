@@ -9,7 +9,10 @@ import {
   signOut, 
   sendPasswordResetEmail,
   updateProfile,
-  onAuthStateChanged 
+  onAuthStateChanged,
+  onIdTokenChanged,
+  setPersistence,
+  browserLocalPersistence
 } from 'firebase/auth';
 
 // Web app's Firebase configuration
@@ -26,6 +29,14 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+
+// Guarantee browser local persistence so authentication persists after page reloads
+if (typeof window !== 'undefined') {
+  setPersistence(auth, browserLocalPersistence).catch((err) => {
+    console.warn('[Firebase Auth Persistence Warning]:', err.message);
+  });
+}
+
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
@@ -52,5 +63,9 @@ export {
   signOut, 
   sendPasswordResetEmail,
   updateProfile,
-  onAuthStateChanged 
+  onAuthStateChanged,
+  onIdTokenChanged,
+  setPersistence,
+  browserLocalPersistence
 };
+

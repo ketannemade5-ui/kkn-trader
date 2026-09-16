@@ -11,6 +11,7 @@ import {
   sendPasswordResetEmail,
   updateProfile as fbUpdateProfile,
   onAuthStateChanged,
+  onIdTokenChanged,
 } from '../config/firebase';
 
 const AuthContext = createContext(null);
@@ -24,86 +25,156 @@ export const AuthProvider = ({ children }) => {
       return null;
     }
   });
-  const [token, setToken] = useState(localStorage.getItem('kkn_token') || null);
+  const [token, setToken] = useState(() => localStorage.getItem('kkn_token') || null);
   const [firebaseUser, setFirebaseUser] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [authInitialized, setAuthInitialized] = useState(false);
   const { success, error } = useToast();
 
   // Helper to sync Firebase authenticated user with backend MongoDB & portfolio
   const syncFirebaseUser = async (fbUser, extraData = {}) => {
+    // Preserve existing saved user name if available and not empty
+    let existingName = '';
+    try {
+      const saved = JSON.parse(localStorage.getItem('kkn_user') || 'null');
+      if (saved && saved.name && saved.email === fbUser.email) {
+        existingName = saved.name;
+      }
+    } catch (e) {}
+
+    const resolvedName =
+      extraData.name ||
+      fbUser.displayName ||
+      existingName ||
+      (fbUser.email ? fbUser.email.split('@')[0] : 'Trader');
+
+    let freshToken = null;
+    try {
+      freshToken = await fbUser.getIdToken();
+    } catch (tokenErr) {
+      freshToken = localStorage.getItem('kkn_token') || `fb_token_${fbUser.uid}`;
+    }
+
     try {
       const res = await authAPI.firebaseSync({
         uid: fbUser.uid,
         email: fbUser.email,
-        name: extraData.name || fbUser.displayName || fbUser.email.split('@')[0],
-        photoURL: fbUser.photoURL || '',
-        experienceLevel: extraData.experienceLevel || 'BEGINNER',
-        tradingGoals: extraData.tradingGoals || ['Learn Price Action', 'Practice $100,000 Paper Account'],
+        name: resolvedName,
+        photoURL: fbUser.photoURL || extraData.photoURL || '',
+        experienceLevel: extraData.experienceLevel || (user?.experienceLevel) || 'BEGINNER',
+        tradingGoals: extraData.tradingGoals || (user?.tradingGoals) || ['Learn Price Action', 'Practice $100,000 Paper Account'],
       });
 
-      if (res && res.success) {
-        setToken(res.token);
-        setUser(res.user);
-        localStorage.setItem('kkn_token', res.token);
-        localStorage.setItem('kkn_user', JSON.stringify(res.user));
-        return { success: true, user: res.user };
+      if (res && res.success && res.user) {
+        const activeToken = res.token || freshToken;
+        const activeUser = {
+          ...res.user,
+          name: res.user.name || resolvedName,
+        };
+        setToken(activeToken);
+        setUser(activeUser);
+        localStorage.setItem('kkn_token', activeToken);
+        localStorage.setItem('kkn_user', JSON.stringify(activeUser));
+        return { success: true, user: activeUser };
       }
     } catch (apiErr) {
       console.warn('[Backend Sync Note]:', apiErr.message);
     }
 
-    // Client-side fallback if backend API is unreachable
+    // Resilient fallback if backend API is offline/unreachable
     const fallbackUser = {
       id: fbUser.uid,
       _id: fbUser.uid,
-      name: extraData.name || fbUser.displayName || fbUser.email.split('@')[0],
+      name: resolvedName,
       email: fbUser.email,
-      role: 'USER',
-      avatar: fbUser.photoURL || '',
-      experienceLevel: extraData.experienceLevel || 'BEGINNER',
-      tradingGoals: extraData.tradingGoals || ['Learn Market Structure'],
+      role: (user?.role) || 'USER',
+      avatar: fbUser.photoURL || extraData.photoURL || '',
+      experienceLevel: extraData.experienceLevel || (user?.experienceLevel) || 'BEGINNER',
+      tradingGoals: extraData.tradingGoals || (user?.tradingGoals) || ['Learn Market Structure'],
     };
-    const fallbackToken = `fb_token_${fbUser.uid}`;
-    setToken(fallbackToken);
+
+    const activeToken = freshToken || `fb_token_${fbUser.uid}`;
+    setToken(activeToken);
     setUser(fallbackUser);
-    localStorage.setItem('kkn_token', fallbackToken);
+    localStorage.setItem('kkn_token', activeToken);
     localStorage.setItem('kkn_user', JSON.stringify(fallbackUser));
     return { success: true, user: fallbackUser };
   };
 
-  // Listen to Firebase auth state changes
+  // Restore and maintain Firebase Auth state across page reloads
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentFbUser) => {
-      setFirebaseUser(currentFbUser);
-      if (currentFbUser && !localStorage.getItem('kkn_token')) {
-        await syncFirebaseUser(currentFbUser);
-      }
-    });
+    let isMounted = true;
 
-    return () => unsubscribe();
-  }, []);
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentFbUser) => {
+      if (!isMounted) return;
 
-  // Check backend session validity
-  useEffect(() => {
-    const fetchCurrentUser = async () => {
-      if (token && !token.startsWith('fb_token_')) {
+      if (currentFbUser) {
+        setFirebaseUser(currentFbUser);
         try {
-          const res = await authAPI.getMe();
-          if (res.success && res.user) {
-            setUser(res.user);
-            localStorage.setItem('kkn_user', JSON.stringify(res.user));
+          const freshIdToken = await currentFbUser.getIdToken();
+          if (isMounted) {
+            setToken(freshIdToken);
+            localStorage.setItem('kkn_token', freshIdToken);
           }
-        } catch (err) {
-          console.warn('Auto-login session expired or offline fallback:', err.message);
-          if (err.message && (err.message.includes('expired') || err.message.includes('Invalid'))) {
-            logout();
+        } catch (e) {
+          console.warn('[Token Fetch Error]:', e.message);
+        }
+
+        await syncFirebaseUser(currentFbUser);
+      } else {
+        setFirebaseUser(null);
+        // If not authenticated via Firebase, verify if a custom demo/backend session exists
+        const storedToken = localStorage.getItem('kkn_token');
+        const storedUser = localStorage.getItem('kkn_user');
+
+        if (storedToken && !storedToken.startsWith('fb_token_') && storedUser) {
+          try {
+            const res = await authAPI.getMe();
+            if (res.success && res.user && isMounted) {
+              setUser(res.user);
+              localStorage.setItem('kkn_user', JSON.stringify(res.user));
+            }
+          } catch (err) {
+            if (isMounted) {
+              setToken(null);
+              setUser(null);
+              localStorage.removeItem('kkn_token');
+              localStorage.removeItem('kkn_user');
+            }
+          }
+        } else {
+          if (isMounted) {
+            setUser(null);
+            setToken(null);
+            localStorage.removeItem('kkn_token');
+            localStorage.removeItem('kkn_user');
           }
         }
       }
-    };
 
-    fetchCurrentUser();
-  }, [token]);
+      if (isMounted) {
+        setLoading(false);
+        setAuthInitialized(true);
+      }
+    });
+
+    // Auto-refresh Firebase ID token whenever it rotates
+    const unsubscribeToken = onIdTokenChanged(auth, async (currentFbUser) => {
+      if (currentFbUser && isMounted) {
+        try {
+          const freshIdToken = await currentFbUser.getIdToken();
+          setToken(freshIdToken);
+          localStorage.setItem('kkn_token', freshIdToken);
+        } catch (e) {}
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribeAuth();
+      unsubscribeToken();
+    };
+  }, []);
 
   // Login with Email and Password
   const login = async (email, password) => {
@@ -114,25 +185,28 @@ export const AuthProvider = ({ children }) => {
       try {
         fbRes = await signInWithEmailAndPassword(auth, email, password);
       } catch (fbErr) {
-        // If not found in Firebase or password invalid, attempt backend login (supports seeded demo accounts)
+        // If not found in Firebase, attempt backend login (supports demo/seeded accounts)
         const res = await authAPI.login({ email, password });
-        if (res.success) {
+        if (res.success && res.user) {
           setToken(res.token);
           setUser(res.user);
           localStorage.setItem('kkn_token', res.token);
           localStorage.setItem('kkn_user', JSON.stringify(res.user));
           success(`Welcome back, ${res.user.name}!`);
           setLoading(false);
-          return { success: true };
+          return { success: true, user: res.user };
         }
         throw fbErr;
       }
 
       if (fbRes?.user) {
+        const idToken = await fbRes.user.getIdToken();
+        setToken(idToken);
+        localStorage.setItem('kkn_token', idToken);
         const syncRes = await syncFirebaseUser(fbRes.user);
-        success(`Welcome back, ${syncRes.user.name}!`);
+        success(`Welcome back, ${syncRes.user.name || 'Trader'}!`);
         setLoading(false);
-        return { success: true };
+        return { success: true, user: syncRes.user };
       }
     } catch (err) {
       setLoading(false);
@@ -153,20 +227,32 @@ export const AuthProvider = ({ children }) => {
   const register = async (name, email, password, experienceLevel, tradingGoals) => {
     setLoading(true);
     try {
+      const trimmedName = name ? name.trim() : email.split('@')[0];
+
       // 1. Create account with Firebase
       const fbRes = await createUserWithEmailAndPassword(auth, email, password);
       if (fbRes.user) {
+        // Update display name in Firebase Auth immediately
         try {
-          await fbUpdateProfile(fbRes.user, { displayName: name });
+          await fbUpdateProfile(fbRes.user, { displayName: trimmedName });
         } catch (e) {
-          // ignore profile update error
+          console.warn('[Profile Name Update Warning]:', e.message);
         }
 
+        const idToken = await fbRes.user.getIdToken();
+        setToken(idToken);
+        localStorage.setItem('kkn_token', idToken);
+
         // 2. Synchronize with MongoDB & provision $100,000 virtual balance
-        await syncFirebaseUser(fbRes.user, { name, experienceLevel, tradingGoals });
+        const syncRes = await syncFirebaseUser(fbRes.user, {
+          name: trimmedName,
+          experienceLevel,
+          tradingGoals,
+        });
+
         success('Account created! $100,000 Virtual Practice Funds added.');
         setLoading(false);
-        return { success: true };
+        return { success: true, user: syncRes.user };
       }
     } catch (err) {
       setLoading(false);
@@ -189,10 +275,18 @@ export const AuthProvider = ({ children }) => {
     try {
       const fbRes = await signInWithPopup(auth, googleProvider);
       if (fbRes.user) {
-        const syncRes = await syncFirebaseUser(fbRes.user);
+        const idToken = await fbRes.user.getIdToken();
+        setToken(idToken);
+        localStorage.setItem('kkn_token', idToken);
+
+        const syncRes = await syncFirebaseUser(fbRes.user, {
+          name: fbRes.user.displayName,
+          photoURL: fbRes.user.photoURL,
+        });
+
         success(`Signed in as ${syncRes.user.name || fbRes.user.displayName}!`);
         setLoading(false);
-        return { success: true };
+        return { success: true, user: syncRes.user };
       }
     } catch (err) {
       setLoading(false);
@@ -230,18 +324,24 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Logout
-  const logout = async () => {
-    try {
-      await signOut(auth);
-    } catch (e) {
-      // ignore
-    }
-    setToken(null);
+  // Immediate Logout (Instant UI response)
+  const logout = () => {
+    // 1. Instantly reset local state & remove storage tokens with zero latency
     setUser(null);
+    setToken(null);
     setFirebaseUser(null);
-    localStorage.removeItem('kkn_token');
-    localStorage.removeItem('kkn_user');
+    try {
+      localStorage.removeItem('kkn_token');
+      localStorage.removeItem('kkn_user');
+    } catch (e) {}
+
+    // 2. Terminate Firebase session asynchronously in the background
+    try {
+      signOut(auth).catch((e) => {
+        console.warn('[Firebase SignOut Background]:', e.message);
+      });
+    } catch (e) {}
+
     success('Logged out successfully.');
   };
 
@@ -249,7 +349,7 @@ export const AuthProvider = ({ children }) => {
   const updateProfile = async (data) => {
     try {
       const res = await authAPI.updateProfile(data);
-      if (res.success) {
+      if (res.success && res.user) {
         setUser(res.user);
         localStorage.setItem('kkn_user', JSON.stringify(res.user));
         if (auth.currentUser && data.name) {
@@ -258,9 +358,26 @@ export const AuthProvider = ({ children }) => {
           } catch (e) {}
         }
         success('Profile updated successfully.');
-        return { success: true };
+        return { success: true, user: res.user };
       }
     } catch (err) {
+      // Client-side fallback update if offline
+      if (data.name || data.experienceLevel) {
+        const updated = {
+          ...user,
+          ...(data.name && { name: data.name }),
+          ...(data.experienceLevel && { experienceLevel: data.experienceLevel }),
+        };
+        setUser(updated);
+        localStorage.setItem('kkn_user', JSON.stringify(updated));
+        if (auth.currentUser && data.name) {
+          try {
+            await fbUpdateProfile(auth.currentUser, { displayName: data.name });
+          } catch (e) {}
+        }
+        success('Profile updated.');
+        return { success: true, user: updated };
+      }
       error(err.message || 'Failed to update profile.');
       return { success: false, message: err.message };
     }
@@ -275,6 +392,7 @@ export const AuthProvider = ({ children }) => {
         token,
         firebaseUser,
         loading,
+        authInitialized,
         isAuthenticated: !!user,
         isAdmin,
         login,
@@ -291,4 +409,3 @@ export const AuthProvider = ({ children }) => {
 };
 
 export const useAuth = () => useContext(AuthContext);
-
