@@ -2,12 +2,12 @@ const mongoose = require('mongoose');
 
 const journalEntrySchema = new mongoose.Schema({
   userId: {
-    type: mongoose.Schema.Types.Mixed,
+    type: String,
     required: true,
     index: true,
   },
   tradeId: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.Mixed,
     ref: 'Trade',
   },
   symbol: {
@@ -51,7 +51,6 @@ const journalEntrySchema = new mongoose.Schema({
   },
   emotion: {
     type: String,
-    enum: ['Calm & Disciplined', 'Confident', 'Hesitant', 'FOMO', 'Impulsive', 'Greedy', 'Anxious', 'Revenge Trade'],
     default: 'Calm & Disciplined',
   },
   mistake: {

@@ -30,29 +30,12 @@ export const OrderPanel = () => {
 
   const currentPrice = side === 'BUY' ? (currentQuote?.ask || currentQuote?.price || 0) : (currentQuote?.bid || currentQuote?.price || 0);
 
-  // Auto-fill suggested SL and TP based on 1:2 R:R if symbol or side changes
+  // Initialize limit price when current price is available; keep SL/TP optional unless explicitly set
   useEffect(() => {
-    if (currentPrice > 0) {
-      const pip = currentQuote?.pipSize || 0.0001;
-      const defaultPips =
-        currentQuote?.category === 'Crypto'
-          ? 500
-          : currentQuote?.category === 'Metals'
-          ? 4
-          : currentQuote?.category === 'Indices'
-          ? 25
-          : 0.003;
-
-      if (side === 'BUY') {
-        setStopLoss(Number((currentPrice - defaultPips).toFixed(currentQuote?.digits || 2)));
-        setTakeProfit(Number((currentPrice + defaultPips * 2).toFixed(currentQuote?.digits || 2)));
-      } else {
-        setStopLoss(Number((currentPrice + defaultPips).toFixed(currentQuote?.digits || 2)));
-        setTakeProfit(Number((currentPrice - defaultPips * 2).toFixed(currentQuote?.digits || 2)));
-      }
+    if (currentPrice > 0 && !limitPrice) {
       setLimitPrice(currentPrice.toString());
     }
-  }, [selectedSymbol, side, currentQuote?.digits]);
+  }, [selectedSymbol, currentPrice]);
 
   // Calculations
   const slNum = parseFloat(stopLoss) || 0;
@@ -91,9 +74,22 @@ export const OrderPanel = () => {
 
   // Quick 1:2 R:R helper
   const applyTwoToOneRR = () => {
-    if (!slNum || !currentPrice) return;
-    const distance = Math.abs(currentPrice - slNum);
+    if (!currentPrice) return;
     const digits = currentQuote?.digits || 2;
+    const defaultDist =
+      currentQuote?.category === 'Crypto'
+        ? 500
+        : currentQuote?.category === 'Metals'
+        ? 15
+        : currentQuote?.category === 'Indices'
+        ? 50
+        : 0.0030;
+
+    const distance = slNum ? Math.abs(currentPrice - slNum) : defaultDist;
+    if (!slNum) {
+      const calculatedSL = side === 'BUY' ? currentPrice - distance : currentPrice + distance;
+      setStopLoss(Number(calculatedSL.toFixed(digits)));
+    }
     if (side === 'BUY') {
       setTakeProfit(Number((currentPrice + distance * 2).toFixed(digits)));
     } else {

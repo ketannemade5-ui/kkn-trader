@@ -2,12 +2,12 @@ const mongoose = require('mongoose');
 
 const tradeSchema = new mongoose.Schema({
   userId: {
-    type: mongoose.Schema.Types.Mixed,
+    type: String,
     required: true,
     index: true,
   },
   positionId: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.Mixed,
     ref: 'Position',
   },
   symbol: {

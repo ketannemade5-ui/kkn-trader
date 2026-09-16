@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const portfolioSchema = new mongoose.Schema({
   userId: {
-    type: mongoose.Schema.Types.Mixed,
+    type: String,
     required: true,
     unique: true,
     index: true,

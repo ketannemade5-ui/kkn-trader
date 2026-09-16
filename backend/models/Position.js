@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const positionSchema = new mongoose.Schema({
   userId: {
-    type: mongoose.Schema.Types.Mixed,
+    type: String,
     required: true,
     index: true,
   },
@@ -66,6 +66,10 @@ const positionSchema = new mongoose.Schema({
     type: String,
     enum: ['OPEN', 'PENDING', 'CLOSED', 'CANCELLED'],
     default: 'OPEN',
+  },
+  strategySetup: {
+    type: String,
+    default: 'Price Action & Liquidity Sweep',
   },
   openedAt: {
     type: Date,

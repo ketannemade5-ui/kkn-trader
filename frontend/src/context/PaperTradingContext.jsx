@@ -28,6 +28,47 @@ const persistTrades = (userId, trades) => {
   } catch (e) {}
 };
 
+const getPositionsStorageKey = (userId) => `kkn_positions_${userId}`;
+const getPendingStorageKey = (userId) => `kkn_pending_${userId}`;
+
+const loadCachedPositions = (userId) => {
+  if (!userId || userId === 'guest') return [];
+  try {
+    const raw = localStorage.getItem(getPositionsStorageKey(userId));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {}
+  return [];
+};
+
+const persistPositions = (userId, positions) => {
+  if (!userId || userId === 'guest' || !Array.isArray(positions)) return;
+  try {
+    localStorage.setItem(getPositionsStorageKey(userId), JSON.stringify(positions));
+  } catch (e) {}
+};
+
+const loadCachedPending = (userId) => {
+  if (!userId || userId === 'guest') return [];
+  try {
+    const raw = localStorage.getItem(getPendingStorageKey(userId));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {}
+  return [];
+};
+
+const persistPending = (userId, pending) => {
+  if (!userId || userId === 'guest' || !Array.isArray(pending)) return;
+  try {
+    localStorage.setItem(getPendingStorageKey(userId), JSON.stringify(pending));
+  } catch (e) {}
+};
+
 const mergeTradeLists = (existingList = [], incomingList = []) => {
   const map = new Map();
   (existingList || []).forEach((t) => {
@@ -63,8 +104,8 @@ export const PaperTradingProvider = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
   const userId = isAuthenticated && user ? (user.id || user._id || user.uid) : null;
 
-  const [positions, setPositions] = useState([]);
-  const [pendingOrders, setPendingOrders] = useState([]);
+  const [positions, setPositions] = useState(() => (userId ? loadCachedPositions(userId) : []));
+  const [pendingOrders, setPendingOrders] = useState(() => (userId ? loadCachedPending(userId) : []));
   const [tradeHistory, setTradeHistory] = useState(() => (userId ? loadCachedTrades(userId) : []));
   const [portfolio, setPortfolio] = useState(DEFAULT_PORTFOLIO);
   const [loading, setLoading] = useState(false);
@@ -81,8 +122,9 @@ export const PaperTradingProvider = ({ children }) => {
       return;
     }
 
-    const cached = loadCachedTrades(userId);
-    setTradeHistory(cached);
+    setPositions(loadCachedPositions(userId));
+    setPendingOrders(loadCachedPending(userId));
+    setTradeHistory(loadCachedTrades(userId));
   }, [isAuthenticated, userId]);
 
   const fetchPaperData = useCallback(async () => {
@@ -96,8 +138,12 @@ export const PaperTradingProvider = ({ children }) => {
       ]);
 
       if (posRes.status === 'fulfilled' && posRes.value.success) {
-        setPositions(posRes.value.positions || []);
-        setPendingOrders(posRes.value.pending || []);
+        const fetchedPositions = posRes.value.positions || [];
+        const fetchedPending = posRes.value.pending || [];
+        setPositions(fetchedPositions);
+        setPendingOrders(fetchedPending);
+        persistPositions(userId, fetchedPositions);
+        persistPending(userId, fetchedPending);
       }
 
       if (portRes.status === 'fulfilled' && portRes.value.success) {
@@ -137,6 +183,21 @@ export const PaperTradingProvider = ({ children }) => {
       const res = await paperTradingAPI.placeOrder(orderData);
       if (res.success) {
         success(`Executed virtual ${orderData.side} order for ${orderData.lots} lot(s) of ${orderData.symbol}!`);
+        if (res.data) {
+          if (res.data.status === 'PENDING') {
+            setPendingOrders((prev) => {
+              const updated = [res.data, ...prev.filter((p) => p._id !== res.data._id)];
+              persistPending(userId, updated);
+              return updated;
+            });
+          } else {
+            setPositions((prev) => {
+              const updated = [res.data, ...prev.filter((p) => p._id !== res.data._id)];
+              persistPositions(userId, updated);
+              return updated;
+            });
+          }
+        }
         await fetchPaperData();
         return { success: true, data: res.data };
       }
@@ -164,6 +225,20 @@ export const PaperTradingProvider = ({ children }) => {
         } else {
           info(`Position closed. Realized Loss: -$${Math.abs(pl).toFixed(2)} (Trade saved to Journal)`);
         }
+
+        // Optimistically remove from open positions and pending orders
+        setPositions((prev) => {
+          const updated = prev.filter((p) => String(p._id) !== String(positionId));
+          persistPositions(userId, updated);
+          return updated;
+        });
+
+        setPendingOrders((prev) => {
+          const updated = prev.filter((p) => String(p._id) !== String(positionId));
+          persistPending(userId, updated);
+          return updated;
+        });
+
         if (closedTrade) {
           setTradeHistory((prev) => {
             const merged = mergeTradeLists([closedTrade], prev);

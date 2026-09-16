@@ -16,12 +16,14 @@ const getPortfolioSummary = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Authentication required to view portfolio.' });
     }
 
+    const uid = String(userId);
+
     if (isDbConnected()) {
       try {
-        let portfolio = await Portfolio.findOne({ userId });
+        let portfolio = await Portfolio.findOne({ $or: [{ userId: uid }, { userId }] });
         if (!portfolio) {
           portfolio = await Portfolio.create({
-            userId,
+            userId: uid,
             initialBalance: 100000.00,
             virtualBalance: 100000.00,
             equity: 100000.00,
@@ -37,14 +39,14 @@ const getPortfolioSummary = async (req, res, next) => {
           await portfolio.save();
         }
 
-        const openPositions = await Position.find({ userId, status: 'OPEN' });
+        const openPositions = await Position.find({ $or: [{ userId: uid }, { userId }], status: 'OPEN' });
         const floatingPL = openPositions.reduce((sum, p) => sum + (p.unrealizedPL || 0), 0);
         const totalUsedMargin = openPositions.reduce((sum, p) => sum + (p.marginRequired || 0), 0);
 
         const currentEquity = Number((portfolio.virtualBalance + floatingPL).toFixed(2));
         const currentAvailableMargin = Math.max(0, Number((currentEquity - totalUsedMargin).toFixed(2)));
 
-        const trades = await Trade.find({ userId });
+        const trades = await Trade.find({ $or: [{ userId: uid }, { userId }] });
         const winningTrades = trades.filter(t => t.result === 'WIN');
         const losingTrades = trades.filter(t => t.result === 'LOSS');
 

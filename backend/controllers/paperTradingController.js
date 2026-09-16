@@ -235,6 +235,7 @@ const closeOpenPosition = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Authentication required to close positions.' });
     }
 
+    const uid = String(userId);
     const { positionId } = req.body;
     if (!positionId) {
       return res.status(400).json({ success: false, message: 'positionId is required.' });
@@ -242,7 +243,7 @@ const closeOpenPosition = async (req, res, next) => {
 
     if (isDbConnected()) {
       try {
-        const result = await closePosition(userId, positionId, 'MANUAL');
+        const result = await closePosition(uid, positionId, 'MANUAL');
         return res.status(200).json({
           success: true,
           message: `Position closed. Realized P/L: $${result.trade.realizedPL.toLocaleString()}`,
@@ -253,8 +254,8 @@ const closeOpenPosition = async (req, res, next) => {
       }
     }
 
-    const userPos = getUserPositions(userId);
-    const pos = userPos.find(p => p._id === positionId && p.status === 'OPEN');
+    const userPos = getUserPositions(uid);
+    const pos = userPos.find(p => (String(p._id) === String(positionId) || p._id === positionId) && p.status === 'OPEN');
     if (!pos) {
       return res.status(404).json({ success: false, message: 'Position not found or unauthorized' });
     }
@@ -285,7 +286,7 @@ const closeOpenPosition = async (req, res, next) => {
     const trade = {
       _id: tradeId,
       tradeId,
-      userId,
+      userId: uid,
       positionId: pos._id,
       symbol: pos.symbol,
       side: pos.side,
@@ -308,10 +309,19 @@ const closeOpenPosition = async (req, res, next) => {
       strategySetup: 'Price Action & Key Levels',
     };
 
-    const userTrades = getUserTrades(userId);
+    const userTrades = getUserTrades(uid);
     userTrades.unshift(trade);
 
-    const userPortfolio = getUserPortfolio(userId);
+    // Save to MongoDB Trade collection if DB is connected
+    if (isDbConnected()) {
+      try {
+        await Trade.create(trade);
+      } catch (dbErr) {
+        console.warn('[MongoDB Trade Create Fallback Notice]:', dbErr.message);
+      }
+    }
+
+    const userPortfolio = getUserPortfolio(uid);
     userPortfolio.balance = Number((userPortfolio.balance + realizedPL).toFixed(2));
     userPortfolio.equity = userPortfolio.balance;
     userPortfolio.usedMargin = Math.max(0, Number((userPortfolio.usedMargin - pos.marginRequired).toFixed(2)));
@@ -349,6 +359,7 @@ const updatePositionLimits = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Authentication required to update limits.' });
     }
 
+    const uid = String(userId);
     const { stopLoss, takeProfit } = req.body;
     const parsedSL = stopLoss !== undefined && stopLoss !== '' && stopLoss !== null ? parseFloat(stopLoss) : null;
     const parsedTP = takeProfit !== undefined && takeProfit !== '' && takeProfit !== null ? parseFloat(takeProfit) : null;
@@ -356,7 +367,7 @@ const updatePositionLimits = async (req, res, next) => {
     if (isDbConnected()) {
       try {
         const updated = await Position.findOneAndUpdate(
-          { _id: req.params.id, userId },
+          { _id: req.params.id, $or: [{ userId: uid }, { userId }] },
           { stopLoss: parsedSL, takeProfit: parsedTP },
           { new: true }
         );
@@ -368,8 +379,8 @@ const updatePositionLimits = async (req, res, next) => {
       }
     }
 
-    const userPos = getUserPositions(userId);
-    const pos = userPos.find(p => p._id === req.params.id && p.userId === userId);
+    const userPos = getUserPositions(uid);
+    const pos = userPos.find(p => String(p._id) === String(req.params.id) && (p.userId === uid || p.userId === userId));
     if (pos) {
       pos.stopLoss = parsedSL;
       pos.takeProfit = parsedTP;
@@ -392,15 +403,27 @@ const getTradeHistory = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Authentication required to view history.' });
     }
 
+    const uid = String(userId);
     let trades = [];
+    const memTrades = getUserTrades(uid) || [];
+
     if (isDbConnected()) {
       try {
-        trades = await Trade.find({ userId }).sort({ closedAt: -1 }).limit(100);
+        const dbTrades = await Trade.find({ $or: [{ userId: uid }, { userId }] }).sort({ closedAt: -1 }).limit(100);
+        const map = new Map();
+        [...memTrades, ...dbTrades].forEach((t) => {
+          if (!t) return;
+          const id = String(t.tradeId || t._id || `${t.symbol}_${t.closedAt || t.openedAt}`);
+          map.set(id, t);
+        });
+        trades = Array.from(map.values()).sort(
+          (a, b) => new Date(b.closedAt || b.openedAt || 0) - new Date(a.closedAt || a.openedAt || 0)
+        );
       } catch (e) {
-        trades = getUserTrades(userId);
+        trades = memTrades;
       }
     } else {
-      trades = getUserTrades(userId);
+      trades = memTrades;
     }
     res.status(200).json({ success: true, count: trades.length, data: trades });
   } catch (err) {

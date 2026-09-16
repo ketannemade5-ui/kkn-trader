@@ -41,6 +41,7 @@ const calculatePL = (side, entryPrice, currentPrice, units) => {
 };
 
 const openPosition = async (userId, { symbol, side, orderType = 'MARKET', lots, stopLoss, takeProfit, strategySetup }) => {
+  const uid = String(userId);
   const quote = getQuoteBySymbol(symbol);
   if (!quote) {
     throw new Error(`Invalid trading instrument: ${symbol}`);
@@ -50,10 +51,10 @@ const openPosition = async (userId, { symbol, side, orderType = 'MARKET', lots, 
   const units = calculatePositionUnits(symbol, lots, quote.category);
   const marginRequired = calculateMarginRequired(units, executionPrice);
 
-  let portfolio = await Portfolio.findOne({ userId });
+  let portfolio = await Portfolio.findOne({ $or: [{ userId: uid }, { userId }] });
   if (!portfolio) {
     portfolio = await Portfolio.create({
-      userId,
+      userId: uid,
       initialBalance: 100000,
       virtualBalance: 100000,
       equity: 100000,
@@ -85,7 +86,7 @@ const openPosition = async (userId, { symbol, side, orderType = 'MARKET', lots, 
   }
 
   const position = await Position.create({
-    userId,
+    userId: uid,
     symbol: quote.symbol,
     side,
     orderType,
@@ -97,6 +98,7 @@ const openPosition = async (userId, { symbol, side, orderType = 'MARKET', lots, 
     takeProfit: takeProfit || null,
     marginRequired,
     riskRewardRatio,
+    strategySetup: strategySetup || 'Price Action & Liquidity Sweep',
     status: 'OPEN',
   });
 
@@ -109,7 +111,12 @@ const openPosition = async (userId, { symbol, side, orderType = 'MARKET', lots, 
 };
 
 const closePosition = async (userId, positionId, closeReason = 'MANUAL') => {
-  const position = await Position.findOne({ _id: positionId, userId, status: 'OPEN' });
+  const uid = String(userId);
+  const position = await Position.findOne({
+    _id: positionId,
+    $or: [{ userId: uid }, { userId }],
+    status: 'OPEN',
+  });
   if (!position) {
     throw new Error('Active position not found');
   }
@@ -146,9 +153,9 @@ const closePosition = async (userId, positionId, closeReason = 'MANUAL') => {
   position.unrealizedPL = 0;
   await position.save();
 
-  // Create Trade Record
+  // Create Trade Record in MongoDB for this specific user
   const trade = await Trade.create({
-    userId,
+    userId: uid,
     positionId: position._id,
     symbol: position.symbol,
     side: position.side,
@@ -166,38 +173,43 @@ const closePosition = async (userId, positionId, closeReason = 'MANUAL') => {
     result,
     tradeStatus: 'CLOSED',
     closeReason,
-    openedAt: position.openedAt,
+    openedAt: position.openedAt || new Date(),
     closedAt: new Date(),
-    strategySetup: 'Price Action & Liquidity Sweep',
+    strategySetup: position.strategySetup || 'Price Action & Liquidity Sweep',
   });
 
-  // Automatically Create Journal Entry
-  const journalEntry = await JournalEntry.create({
-    userId,
-    tradeId: trade._id,
-    symbol: position.symbol,
-    side: position.side,
-    entryPrice: position.entryPrice,
-    exitPrice: currentPrice,
-    stopLoss: position.stopLoss,
-    takeProfit: position.takeProfit,
-    lots: position.lots,
-    realizedPL,
-    riskReward: riskRewardAchieved,
-    result,
-    strategySetup: 'Price Action & Liquidity Sweep',
-    tradeReason: `Executed ${position.side} order based on institutional price structure.`,
-    emotion: result === 'WIN' ? 'Disciplined' : 'Calm & Evaluated',
-    mistake: result === 'WIN' ? 'None - Maintained plan' : 'Review entry timing',
-    lessonLearned: `Risk was strictly managed at ${position.lots} lots. Always protect capital.`,
-    tags: [position.symbol, position.side, result],
-  });
+  // Automatically Create Journal Entry in MongoDB
+  let journalEntry = null;
+  try {
+    journalEntry = await JournalEntry.create({
+      userId: uid,
+      tradeId: trade._id,
+      symbol: position.symbol,
+      side: position.side,
+      entryPrice: position.entryPrice,
+      exitPrice: currentPrice,
+      stopLoss: position.stopLoss || null,
+      takeProfit: position.takeProfit || null,
+      lots: position.lots,
+      realizedPL,
+      riskReward: riskRewardAchieved,
+      result,
+      strategySetup: position.strategySetup || 'Price Action & Liquidity Sweep',
+      tradeReason: `Executed ${position.side} order based on institutional price structure.`,
+      emotion: 'Calm & Disciplined',
+      mistake: result === 'WIN' ? 'None - Followed Rules' : 'Review entry timing',
+      lessonLearned: `Risk was strictly managed at ${position.lots} lots. Always protect capital.`,
+      tags: [position.symbol, position.side, result],
+    });
 
-  trade.journalEntryId = journalEntry._id;
-  await trade.save();
+    trade.journalEntryId = journalEntry._id;
+    await trade.save();
+  } catch (jErr) {
+    console.warn('[Auto Journal Entry Creation Notice]:', jErr.message);
+  }
 
-  // Update User Portfolio
-  const portfolio = await Portfolio.findOne({ userId });
+  // Update User Portfolio in MongoDB
+  const portfolio = await Portfolio.findOne({ $or: [{ userId: uid }, { userId }] });
   if (portfolio) {
     portfolio.virtualBalance = Number((portfolio.virtualBalance + realizedPL).toFixed(2));
     portfolio.usedMargin = Math.max(0, Number((portfolio.usedMargin - position.marginRequired).toFixed(2)));
@@ -244,8 +256,8 @@ const runPaperTradingMonitor = async () => {
       pos.unrealizedPL = unrealizedPL;
       pos.unrealizedPLPercent = unrealizedPLPercent;
 
-      // Check Stop Loss Trigger
-      if (pos.stopLoss) {
+      // Check Stop Loss Trigger (only if explicitly set as a positive number)
+      if (typeof pos.stopLoss === 'number' && pos.stopLoss > 0) {
         const slHit = pos.side === 'BUY' ? currentPrice <= pos.stopLoss : currentPrice >= pos.stopLoss;
         if (slHit) {
           await closePosition(pos.userId, pos._id, 'STOP_LOSS');
@@ -253,8 +265,8 @@ const runPaperTradingMonitor = async () => {
         }
       }
 
-      // Check Take Profit Trigger
-      if (pos.takeProfit) {
+      // Check Take Profit Trigger (only if explicitly set as a positive number)
+      if (typeof pos.takeProfit === 'number' && pos.takeProfit > 0) {
         const tpHit = pos.side === 'BUY' ? currentPrice >= pos.takeProfit : currentPrice <= pos.takeProfit;
         if (tpHit) {
           await closePosition(pos.userId, pos._id, 'TAKE_PROFIT');
