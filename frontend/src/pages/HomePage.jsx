@@ -19,6 +19,7 @@ import {
   DollarSign,
   Instagram,
   Compass,
+  Download,
 } from 'lucide-react';
 
 export const HomePage = () => {
@@ -117,6 +118,15 @@ export const HomePage = () => {
               <Sparkles className="w-5 h-5 text-kkn-gold" />
               Try Paper Trading ($100k Demo)
             </Link>
+
+            <a
+              href="/KKN_Trader.apk"
+              download="KKN_Trader.apk"
+              className="w-full sm:w-auto px-8 py-4 rounded-xl text-base font-bold text-white bg-slate-900 border border-emerald-500/40 hover:border-emerald-400 hover:bg-slate-800 shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2"
+            >
+              <Download className="w-5 h-5 text-emerald-400" />
+              Download Android App
+            </a>
           </div>
 
           {/* Trust Highlights */}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ShieldCheck, Instagram, AlertTriangle, ArrowUpRight } from 'lucide-react';
+import { ShieldCheck, Instagram, AlertTriangle, ArrowUpRight, Download } from 'lucide-react';
 
 export const Footer = () => {
   return (
@@ -65,6 +65,16 @@ export const Footer = () => {
             </h4>
             <ul className="space-y-2.5 text-xs">
               <li><Link to="/trade" className="hover:text-white transition-colors">Paper Trading ($100,000 Demo)</Link></li>
+              <li>
+                <a
+                  href="/KKN_Trader.apk"
+                  download="KKN_Trader.apk"
+                  className="inline-flex items-center gap-1.5 hover:text-white transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download Android APK
+                </a>
+              </li>
               <li><Link to="/markets" className="hover:text-white transition-colors">Live Markets & Charts</Link></li>
               <li><Link to="/tools" className="hover:text-white transition-colors">7 Trading Calculators</Link></li>
               <li><Link to="/ai" className="hover:text-white transition-colors">KKN AI Learning Assistant</Link></li>
