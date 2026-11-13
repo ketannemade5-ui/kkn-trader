@@ -168,6 +168,10 @@
 6. Click **Deploy**.
 7. In ~60 seconds, Vercel will deploy your site with global CDN distribution!
 
+#### If hosting the frontend on Render
+
+The Render Blueprint in the repository root also configures the frontend as a static site and rewrites unmatched paths to `/index.html`, which is required for refreshing client-side routes such as `/trade`. If the frontend is already deployed as a manually configured Render Static Site, add the same catch-all rewrite in that service's **Redirects/Rewrites** settings, or deploy/sync it through the Blueprint.
+
 ---
 
 ### STEP 5: Connect Custom Domain `kkntrader.com`
